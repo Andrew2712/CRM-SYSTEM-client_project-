@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(RECEPTIONIST)
+  createdAt    DateTime @default(now())
+
+  appointments Appointment[] @relation("DoctorAppointments")
+  availability AvailabilitySlot[]
+  auditLogs    AuditLog[]
+  inAppNotifications InAppNotification[]
+}
+
+enum Role {
+  ADMIN
+  DOCTOR
+  RECEPTIONIST
+}
+
+model Patient {
+  id                    String        @id @default(cuid())
+  patientCode           String        @unique
+  name                  String
+  phone                 String        @unique
+  email                 String?
+  dob                   DateTime?
+  age                   Int?
+  gender                Gender?
+  address               String?
+  purposeOfVisit        String?
+  medicalConditions     String?
+  status                PatientStatus @default(NEW)
+  phase                 Phase?
+
+  totalSessionsPlanned  Int           @default(0)
+  createdAt             DateTime      @default(now())
+
+  appointments          Appointment[]
+  visits                PatientVisit[]
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Phase {
+  PHASE_1
+  PHASE_2
+  PHASE_3
+  PHASE_4
+  PHASE_5
+}
+
+enum PatientStatus {
+  NEW
+  RETURNING
+}
+
+model Appointment {
+  id              String   @id @default(cuid())
+  patientId       String
+  doctorId        String
+  startTime       DateTime
+  endTime         DateTime
+  status          AppointmentStatus @default(CONFIRMED)
+  sessionType     SessionType
+  rescheduleCount Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  doctor        User     @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  notifications Notification[]
+  visit         PatientVisit?
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  ATTENDED
+  MISSED
+  CANCELLED
+  RESCHEDULED
+}
+
+enum SessionType {
+  INITIAL_ASSESSMENT
+  FOLLOW_UP
+  SPECIALIZED
+}
+
+model PatientVisit {
+  id            String   @id @default(cuid())
+  patientId     String
+  doctorId      String
+  appointmentId String   @unique
+  sessionType   SessionType
+  notes         String?
+  status        AppointmentStatus
+  visitDate     DateTime
+
+  patient     Patient     @relation(fields: [patientId], references: [id])
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+}
+
+model AvailabilitySlot {
+  id        String   @id @default(cuid())
+  doctorId  String
+  slotDate  DateTime
+  startTime DateTime
+  endTime   DateTime
+  isBooked  Boolean  @default(false)
+
+  doctor User @relation(fields: [doctorId], references: [id])
+}
+
+model Notification {
+  id            String   @id @default(cuid())
+  appointmentId String
+  channel       NotificationChannel
+  scheduledAt   DateTime
+  sentAt        DateTime?
+  status        NotificationStatus @default(PENDING)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+}
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  CALENDAR
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+}
+
+// Add to schema.prisma — do NOT remove anything existing
+
+model InAppNotification {
+  id        String   @id @default(cuid())
+  userId    String                          // who receives it
+  type      InAppNotifType
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  entityId  String?                         // appointmentId, patientId, etc.
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+enum InAppNotifType {
+  APPOINTMENT_CREATED
+  APPOINTMENT_MISSED
+  SESSION_COMPLETED
+  SYSTEM
+}
