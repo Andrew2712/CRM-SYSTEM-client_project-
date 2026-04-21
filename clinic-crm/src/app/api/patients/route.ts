@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
           purposeOfVisit:    (body.purposeOfVisit as string) || null,
           medicalConditions: (body.medicalConditions as string) || null,
           status:            (body.status as PatientStatus) || PatientStatus.NEW,
-          phase:             (body.phase as Phase) || Phase.PHASE_1,
+          phase:             (body.phase as Phase) ||  null,
           totalSessionsPlanned: body.totalSessionsPlanned
             ? parseInt(body.totalSessionsPlanned as string, 10)
             : 0,

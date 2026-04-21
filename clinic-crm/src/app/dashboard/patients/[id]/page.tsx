@@ -179,12 +179,21 @@ export default function PatientProfile() {
             {/* ── Identity card ── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               {/* Gradient banner */}
-              <div className="h-20 bg-gradient-to-br from-teal-600 via-teal-500 to-cyan-400 relative overflow-hidden">
-                <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
-                <div className="absolute -right-2 top-8 w-12 h-12 bg-white/10 rounded-full" />
-                <div className="absolute left-1/2 -bottom-4 w-32 h-8 bg-white/5 rounded-full blur-md" />
-              </div>
+              <div className="relative">
+  {/* Header */}
+  <div className="h-24 bg-gradient-to-br from-teal-600 via-teal-500 to-cyan-400 relative overflow-hidden">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
+    <div className="absolute -right-2 top-8 w-12 h-12 bg-white/10 rounded-full" />
+    <div className="absolute left-1/2 -bottom-4 w-32 h-8 bg-white/5 rounded-full blur-md" />
+  </div>
 
+  {/* Avatar (AC) */}
+  <div className="absolute left-6 top-16 z-10">
+    <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center text-teal-600 text-2xl font-bold">
+      {initials}
+    </div>
+  </div>
+</div>
               <div className="px-5 pb-5">
                 <div className="flex items-end justify-between -mt-8 mb-5">
                   <div className="w-16 h-16 rounded-2xl bg-white border-2 border-white shadow-lg flex items-center justify-center text-teal-700 font-extrabold text-xl ring-4 ring-teal-50">
