@@ -150,35 +150,66 @@ export default function PatientsPage() {
 
   // Load filtered patients (for display)
   async function loadPatients() {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (search) params.set("search", search);
-      if (statusFilter) params.set("status", statusFilter);
-      const res = await fetch(`/api/patients?${params.toString()}`, { credentials: "include" });
-      const text = await res.text();
-      if (!text) { setPatients([]); setLoading(false); return; }
-      const data = JSON.parse(text);
-      setPatients(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to load patients", e);
+  setLoading(true);
+  try {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (statusFilter) params.set("status", statusFilter);
+
+    const res = await fetch(`/api/patients?${params.toString()}`, {
+      credentials: "include",
+    });
+
+    const text = await res.text();
+    if (!text) {
       setPatients([]);
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    const data = JSON.parse(text);
+
+    const sorted = Array.isArray(data)
+      ? data.sort(
+          (a: Patient, b: Patient) =>
+            new Date(a.createdAt).getTime() -
+            new Date(b.createdAt).getTime()
+        )
+      : [];
+
+    setPatients(sorted);
+  } catch (e) {
+    console.error("Failed to load patients", e);
+    setPatients([]);
   }
+  setLoading(false);
+}
 
   // Load ALL patients (for export — no filters)
   async function loadAllPatients() {
-    try {
-      const res = await fetch(`/api/patients`, { credentials: "include" });
-      const text = await res.text();
-      if (!text) return;
-      const data = JSON.parse(text);
-      setAllPatients(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to load all patients", e);
-    }
+  try {
+    const res = await fetch(`/api/patients`, {
+      credentials: "include",
+    });
+
+    const text = await res.text();
+    if (!text) return;
+
+    const data = JSON.parse(text);
+
+    const sorted = Array.isArray(data)
+      ? data.sort(
+          (a: Patient, b: Patient) =>
+            new Date(a.createdAt).getTime() -
+            new Date(b.createdAt).getTime()
+        )
+      : [];
+
+    setAllPatients(sorted);
+  } catch (e) {
+    console.error("Failed to load all patients", e);
   }
+}
 
   useEffect(() => { loadPatients(); }, [search, statusFilter]);
   useEffect(() => { loadAllPatients(); }, []);

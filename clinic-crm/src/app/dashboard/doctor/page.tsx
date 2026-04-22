@@ -483,9 +483,9 @@ export default function DoctorPage() {
                                     {isNow && a.status === "CONFIRMED" ? "In Progress" : a.status.charAt(0) + a.status.slice(1).toLowerCase()}
                                   </span>
                                   <Link href={`/dashboard/patients/${a.patient.id}`}
-                                    className="text-xs text-teal-600 hover:text-teal-700 font-semibold hover:underline">
-                                    View profile →
-                                  </Link>
+                          className="flex-shrink-0 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-white hover:bg-teal-50 border border-teal-100 px-2.5 py-1.5 rounded-lg transition-all ml-2">
+                          Profile
+                        </Link>
                                 </div>
                               </div>
                             </div>

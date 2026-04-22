@@ -9,44 +9,40 @@ import {
   Users,
   CalendarDays,
   Stethoscope,
-  UserRound,
   BarChart3,
   Bell,
-  LogOut,
 } from "lucide-react";
 
-// ─── Nav structure with role guards ──────────────────────────────────────────
+// ─── Nav structure ────────────────────────────────────────────────────────────
 
 const NAV = [
   {
     group: "MAIN",
     items: [
-      { href: "/dashboard",              label: "Admin",         icon: LayoutGrid,   roles: ["ADMIN"] },
-      { href: "/dashboard/patients",     label: "Patients",      icon: Users,        roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
-      { href: "/dashboard/booking",      label: "Booking",       icon: CalendarDays, roles: ["ADMIN", "RECEPTIONIST"] },
+      { href: "/dashboard",               label: "Admin",         icon: LayoutGrid,   roles: ["ADMIN"] },
+      { href: "/dashboard/patients",      label: "Patients",      icon: Users,        roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
+      { href: "/dashboard/booking",       label: "Booking",       icon: CalendarDays, roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
   {
     group: "VIEWS",
     items: [
-      { href: "/dashboard/doctor",       label: "Doctor",        icon: Stethoscope,  roles: ["ADMIN", "DOCTOR"] },
+      { href: "/dashboard/doctor",        label: "Doctor",        icon: Stethoscope,  roles: ["ADMIN", "DOCTOR"] },
     ],
   },
   {
     group: "SYSTEM",
     items: [
-      { href: "/dashboard/analytics",    label: "Analytics",     icon: BarChart3,    roles: ["ADMIN"] },
-      { href: "/dashboard/notifications",label: "Notifications", icon: Bell,         roles: ["ADMIN", "RECEPTIONIST"] },
+      { href: "/dashboard/analytics",     label: "Analytics",     icon: BarChart3,    roles: ["ADMIN"] },
+      { href: "/dashboard/notifications", label: "Notifications", icon: Bell,         roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
 ];
 
-// ─── Role badge color ─────────────────────────────────────────────────────────
-
-const ROLE_BADGE: Record<string, string> = {
-  ADMIN:        "bg-teal-50 text-teal-700",
-  DOCTOR:       "bg-sky-50 text-sky-700",
-  RECEPTIONIST: "bg-violet-50 text-violet-700",
+const ROLE_CONFIG: Record<string, { label: string; badge: string }> = {
+  ADMIN:        { label: "Admin",        badge: "bg-white/20 text-white" },
+  DOCTOR:       { label: "Doctor",       badge: "bg-white/20 text-white" },
+  RECEPTIONIST: { label: "Receptionist", badge: "bg-white/20 text-white" },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -55,52 +51,58 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { data: session } = useSession();
   const pathname = usePathname();
 
-  const role = session?.user?.role ?? "";
-  const userName = session?.user?.name ?? "";
+  const role      = session?.user?.role ?? "";
+  const userName  = session?.user?.name ?? "";
   const userEmail = session?.user?.email ?? "";
-
-  // Initial for avatar
-  const initial = userName.charAt(0).toUpperCase() || "?";
+  const initials  = userName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
+  const roleCfg   = ROLE_CONFIG[role];
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
 
-      {/* ── Sidebar ── */}
-      <aside className="w-56 shrink-0 h-screen flex flex-col bg-white border-r border-gray-100">
+      {/* ══════════════════════════════
+          SIDEBAR
+      ══════════════════════════════ */}
+      <aside
+        className="w-60 shrink-0 h-screen flex flex-col relative overflow-hidden"
+        style={{ background: "linear-gradient(160deg, #0a5c47 0%, #0d7a5f 45%, #0f8f6e 100%)" }}
+      >
+        {/* Decorative background circles */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute top-32 -left-8 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute bottom-32 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute -bottom-8 -left-8 w-40 h-40 rounded-full bg-black/10 pointer-events-none" />
 
-        {/* Logo */}
-        <div className="px-5 py-5 border-b border-gray-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center shrink-0">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <circle cx="7" cy="7" r="5.5" stroke="white" strokeOpacity="0.4" strokeWidth="1.2" />
-                <path d="M7 4v3.2l2 1.3" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        {/* ── Logo ── */}
+        <div className="relative px-5 py-5 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center shrink-0 shadow-md">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <circle cx="9" cy="9" r="7" stroke="white" strokeOpacity="0.5" strokeWidth="1.5" />
+                <circle cx="9" cy="9" r="3.5" fill="white" fillOpacity="0.9" />
+                <path d="M9 2v2M9 14v2M2 9h2M14 9h2" stroke="white" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </div>
             <div>
-              <div className="text-sm font-bold text-gray-900 leading-tight tracking-tight">Vyayama</div>
-              <div className="text-[10px] text-gray-400 leading-tight">Clinic management</div>
+              <p className="text-sm font-extrabold text-white leading-tight tracking-tight">Vyayama</p>
+              <p className="text-[10px] text-white/50 leading-tight mt-0.5">Clinic management</p>
             </div>
           </div>
         </div>
 
-        {/* Nav groups */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+        {/* ── Navigation ── */}
+        <nav className="relative flex-1 overflow-y-auto px-3 py-5 space-y-6">
           {NAV.map(({ group, items }) => {
-            // Filter by role
-            const visible = items.filter((item) => item.roles.includes(role));
+            const visible = items.filter(item => item.roles.includes(role));
             if (visible.length === 0) return null;
 
             return (
               <div key={group}>
-                {/* Group label */}
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-1.5">
+                <p className="text-[9px] font-black text-white/35 uppercase tracking-[0.15em] px-3 mb-2">
                   {group}
                 </p>
-
-                <ul className="space-y-0.5">
+                <ul className="space-y-1">
                   {visible.map(({ label, href, icon: Icon }) => {
-                    // Active: exact match for /dashboard, startsWith for others
                     const isActive =
                       href === "/dashboard"
                         ? pathname === "/dashboard"
@@ -111,20 +113,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Link
                           href={href}
                           className={`
-                            flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium
-                            transition-all duration-150
+                            group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold
+                            transition-all duration-150 relative
                             ${isActive
-                              ? "bg-teal-50 text-teal-700"
-                              : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                              ? "bg-white/15 text-white shadow-sm"
+                              : "text-white/60 hover:bg-white/10 hover:text-white"
                             }
                           `}
                         >
+                          {/* Active left indicator */}
+                          {isActive && (
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full" />
+                          )}
                           <Icon
                             size={16}
-                            strokeWidth={isActive ? 2.2 : 1.8}
-                            className={isActive ? "text-teal-600" : "text-gray-400"}
+                            strokeWidth={isActive ? 2.5 : 2}
+                            className={isActive ? "text-white" : "text-white/50 group-hover:text-white/80"}
                           />
                           {label}
+                          {isActive && (
+                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60" />
+                          )}
                         </Link>
                       </li>
                     );
@@ -135,24 +144,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* Footer — user info + sign out */}
-        <div className="px-4 py-4 border-t border-gray-100 space-y-3">
-          {/* User info */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 text-xs font-bold shrink-0">
-              {initial}
+        {/* ── User footer ── */}
+        <div className="relative px-4 py-4 border-t border-white/10">
+          {/* User info card */}
+          <div className="bg-white/10 rounded-2xl p-3.5 mb-3 border border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white text-xs font-black shrink-0 border border-white/20">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-white truncate leading-tight">
+                  {userName || "User"}
+                </p>
+                <p className="text-[10px] text-white/50 truncate leading-tight mt-0.5">
+                  {userEmail || role}
+                </p>
+              </div>
+              {roleCfg && (
+                <span className={`text-[9px] font-black px-2 py-1 rounded-lg shrink-0 ${roleCfg.badge} border border-white/20`}>
+                  {roleCfg.label}
+                </span>
+              )}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-gray-800 truncate leading-tight">{userName || "User"}</p>
-              <p className="text-[10px] text-gray-400 truncate leading-tight mt-0.5">
-                {userEmail || role}
-              </p>
-            </div>
-            {role && (
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 ${ROLE_BADGE[role] ?? "bg-gray-100 text-gray-500"}`}>
-                {role.charAt(0) + role.slice(1).toLowerCase()}
-              </span>
-            )}
           </div>
 
           {/* Sign out */}

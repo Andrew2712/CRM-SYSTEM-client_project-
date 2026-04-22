@@ -3,7 +3,7 @@ import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
 
 export const metadata: Metadata = {
-  title: "Vyayamaphysio CRM",
+  title: "Vyayama-physio",
   description: "Clinic Resource Management System",
 };
 
