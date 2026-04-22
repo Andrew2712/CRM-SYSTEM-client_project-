@@ -276,19 +276,23 @@ export default function AnalyticsPage() {
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
                     <Pie
-                      activeIndex={activePieIndex}
-                      activeShape={ActivePieShape}
-                      data={(genderDistribution ?? []).map(g => ({
-                        name: g.gender === "MALE" ? "Male" : g.gender === "FEMALE" ? "Female" : "Other",
-                        value: g.count,
-                        gender: g.gender,
-                      }))}
-                      cx="50%" cy="50%"
-                      innerRadius={60} outerRadius={85}
-                      dataKey="value"
-                      onClick={handlePieClick}
-                      className="cursor-pointer"
-                    >
+  {...({
+    activeIndex: activePieIndex,
+    activeShape: ActivePieShape,
+    data: (genderDistribution ?? []).map(g => ({
+      name: g.gender === "MALE" ? "Male" : g.gender === "FEMALE" ? "Female" : "Other",
+      value: g.count,
+      gender: g.gender,
+    })),
+    cx: "50%",
+    cy: "50%",
+    innerRadius: 60,
+    outerRadius: 85,
+    dataKey: "value",
+    onClick: handlePieClick,
+    className: "cursor-pointer",
+  } as any)}
+>
                       {(genderDistribution ?? []).map((g, i) => (
                         <Cell key={g.gender} fill={GENDER_COLORS[g.gender] ?? SLATE} />
                       ))}
