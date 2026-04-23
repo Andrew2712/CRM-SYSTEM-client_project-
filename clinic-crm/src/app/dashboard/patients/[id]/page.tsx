@@ -34,6 +34,15 @@ const STATUS_STYLES: Record<string, { pill: string; dot: string }> = {
   CANCELLED: { pill: "bg-gray-100 text-gray-500 border border-gray-200",         dot: "bg-gray-400" },
 };
 
+// ── Pure helper — no hooks, safe to call anywhere ─────────────────────────────
+function maskPhone(phone: string, role: string): string {
+  if (!phone) return "—";
+  if (role === "ADMIN") return phone;
+  if (role === "DOCTOR") return `••••••${phone.slice(-4)}`;
+  return "••••••••••";
+}
+
+// ── InfoRow — pure component, no hooks ───────────────────────────────────────
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
@@ -48,9 +57,13 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
 export default function PatientProfile() {
   const params = useParams();
-  const { data: session } = useSession();
+  const { data: session } = useSession(); // ✅ ONLY inside component body
+
+  const role = session?.user?.role ?? "";
+
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -61,7 +74,7 @@ export default function PatientProfile() {
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<"sessions" | "notes">("sessions");
 
-  const canEdit = ["ADMIN", "DOCTOR"].includes(session?.user?.role ?? "");
+  const canEdit = ["ADMIN", "DOCTOR"].includes(role);
 
   async function loadPatient() {
     const res = await fetch(`/api/patients/${params.id}`, { credentials: "include" });
@@ -69,7 +82,6 @@ export default function PatientProfile() {
     const data = await res.json();
     setPatient(data);
     setTotalSessions(data.totalSessionsPlanned ?? 0);
-    // Only set phase if it's a known valid phase key, otherwise null
     setPhase(data.phase && PHASES[data.phase] ? data.phase : null);
     setLoading(false);
   }
@@ -78,16 +90,8 @@ export default function PatientProfile() {
 
   async function saveChanges() {
     setSaving(true);
-    // Only send phase if it's been assigned; send undefined/omit if null
     const body: Record<string, unknown> = { totalSessionsPlanned: totalSessions };
-    if (phase !== null) {
-      body.phase = phase;
-    }
-    // If phase is null, we send a special sentinel so the API knows to clear it
-    // (depends on your schema — if phase is optional/nullable in Prisma, send null explicitly)
-    else {
-      body.phase = null;
-    }
+    body.phase = phase ?? null;
 
     await fetch(`/api/patients/${params.id}`, {
       method: "PATCH",
@@ -130,9 +134,9 @@ export default function PatientProfile() {
     ? patient.appointments.filter(a => a.status === statusFilter)
     : patient.appointments;
 
-  const latestNote = patient.visits?.[0]?.notes;
+  const latestNote   = patient.visits?.[0]?.notes;
   const currentPhase = phase && PHASES[phase] ? PHASES[phase] : null;
-  const progressPct = patient.totalSessionsPlanned > 0
+  const progressPct  = patient.totalSessionsPlanned > 0
     ? Math.min((attended / patient.totalSessionsPlanned) * 100, 100)
     : 0;
 
@@ -157,67 +161,54 @@ export default function PatientProfile() {
           <span className="text-gray-300 mx-1">·</span>
           <span className="font-mono text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{patient.patientCode}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
-            patient.status === "NEW"
-              ? "bg-blue-50 text-blue-600 border-blue-200"
-              : "bg-teal-50 text-teal-700 border-teal-200"
-          }`}>
-            {patient.status}
-          </span>
-        </div>
+        <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
+          patient.status === "NEW"
+            ? "bg-blue-50 text-blue-600 border-blue-200"
+            : "bg-teal-50 text-teal-700 border-teal-200"
+        }`}>
+          {patient.status}
+        </span>
       </div>
 
       <div className="max-w-[1400px] mx-auto p-6">
         <div className="grid grid-cols-[360px_1fr] gap-6 items-start">
 
-          {/* ════════════════════════════════════════
-              LEFT COLUMN
-          ════════════════════════════════════════ */}
+          {/* ════════ LEFT COLUMN ════════ */}
           <div className="space-y-5">
 
-            {/* ── Identity card ── */}
+            {/* Identity card */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {/* Gradient banner */}
               <div className="relative">
-  {/* Header */}
-  <div className="h-24 bg-gradient-to-br from-teal-600 via-teal-500 to-cyan-400 relative overflow-hidden">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
-    <div className="absolute -right-2 top-8 w-12 h-12 bg-white/10 rounded-full" />
-    <div className="absolute left-1/2 -bottom-4 w-32 h-8 bg-white/5 rounded-full blur-md" />
-  </div>
-
-  {/* Avatar (AC) */}
-  <div className="absolute left-6 top-16 z-10">
-    <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center text-teal-600 text-2xl font-bold">
-      {initials}
-    </div>
-  </div>
-</div>
-              <div className="px-5 pb-5">
-                <div className="flex items-end justify-between -mt-8 mb-5">
-                  <div className="w-16 h-16 rounded-2xl bg-white border-2 border-white shadow-lg flex items-center justify-center text-teal-700 font-extrabold text-xl ring-4 ring-teal-50">
+                <div className="h-24 bg-gradient-to-br from-teal-600 via-teal-500 to-cyan-400 relative overflow-hidden">
+                  <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
+                  <div className="absolute -right-2 top-8 w-12 h-12 bg-white/10 rounded-full" />
+                  <div className="absolute left-1/2 -bottom-4 w-32 h-8 bg-white/5 rounded-full blur-md" />
+                </div>
+                <div className="absolute left-6 top-14 z-10">
+                  <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center text-teal-600 text-2xl font-bold border-2 border-white">
                     {initials}
                   </div>
                 </div>
+              </div>
 
+              <div className="px-5 pb-5 pt-14">
                 <div className="mb-5">
                   <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">{patient.name}</h1>
                   <p className="text-xs text-gray-400 font-mono mt-0.5">{patient.patientCode}</p>
                 </div>
-
                 <div className="space-y-1">
-                  <InfoRow icon="📞" label="Phone"   value={patient.phone} />
-                  <InfoRow icon="✉️" label="Email"   value={patient.email ?? "—"} />
-                  <InfoRow icon="🎂" label="Age"     value={patient.age ? `${patient.age} years old` : "—"} />
-                  <InfoRow icon="⚧"  label="Gender"  value={patient.gender ?? "—"} />
-                  <InfoRow icon="📍" label="Address" value={patient.address ?? "—"} />
+                  {/* ✅ maskPhone called here, inside component, using role from hook */}
+                  <InfoRow icon="📞" label="Phone"      value={maskPhone(patient.phone, role)} />
+                  <InfoRow icon="✉️" label="Email"      value={patient.email ?? "—"} />
+                  <InfoRow icon="🎂" label="Age"        value={patient.age ? `${patient.age} years old` : "—"} />
+                  <InfoRow icon="⚧"  label="Gender"     value={patient.gender ?? "—"} />
+                  <InfoRow icon="📍" label="Address"    value={patient.address ?? "—"} />
                   <InfoRow icon="🗓" label="Registered" value={new Date(patient.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })} />
                 </div>
               </div>
             </div>
 
-            {/* ── Clinical Info ── */}
+            {/* Clinical Info */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-7 h-7 bg-teal-50 rounded-lg flex items-center justify-center">
@@ -227,7 +218,6 @@ export default function PatientProfile() {
                 </div>
                 <h2 className="text-sm font-bold text-gray-800">Clinical Info</h2>
               </div>
-
               <div className="space-y-4">
                 <div className="bg-gray-50 rounded-xl p-3.5">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Purpose of Visit</p>
@@ -249,7 +239,7 @@ export default function PatientProfile() {
               </div>
             </div>
 
-            {/* ── Treatment Plan ── */}
+            {/* Treatment Plan */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 pt-5 pb-4 border-b border-gray-100">
                 <div className="flex items-center justify-between">
@@ -279,19 +269,13 @@ export default function PatientProfile() {
               <div className="p-5">
                 {editing ? (
                   <div className="space-y-5">
-                    {/* Phase selector */}
                     <div>
                       <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-3">Treatment Phase</label>
                       <div className="space-y-2">
-                        {/* Not assigned option */}
-                        <button
-                          onClick={() => setPhase(null)}
+                        <button onClick={() => setPhase(null)}
                           className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border-2 text-left transition-all ${
-                            phase === null
-                              ? "border-gray-300 bg-gray-50 shadow-sm"
-                              : "border-gray-100 hover:border-gray-200 hover:bg-gray-50/50"
-                          }`}
-                        >
+                            phase === null ? "border-gray-300 bg-gray-50 shadow-sm" : "border-gray-100 hover:border-gray-200 hover:bg-gray-50/50"
+                          }`}>
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${phase === null ? "bg-gray-200" : "bg-gray-100"}`}>
                             <span className="w-2 h-2 rounded-full bg-gray-400 block" />
                           </div>
@@ -309,15 +293,10 @@ export default function PatientProfile() {
                         </button>
 
                         {Object.entries(PHASES).map(([key, val]) => (
-                          <button
-                            key={key}
-                            onClick={() => setPhase(key)}
+                          <button key={key} onClick={() => setPhase(key)}
                             className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border-2 text-left transition-all ${
-                              phase === key
-                                ? `${val.border} ${val.bg} shadow-sm`
-                                : "border-gray-100 hover:border-gray-200 hover:bg-gray-50/50"
-                            }`}
-                          >
+                              phase === key ? `${val.border} ${val.bg} shadow-sm` : "border-gray-100 hover:border-gray-200 hover:bg-gray-50/50"
+                            }`}>
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${phase === key ? val.bg : "bg-gray-100"}`}>
                               <span className={`w-2.5 h-2.5 rounded-full ${val.dot} block`} />
                             </div>
@@ -337,22 +316,17 @@ export default function PatientProfile() {
                       </div>
                     </div>
 
-                    {/* Sessions input */}
                     <div>
                       <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Total Sessions Planned</label>
                       <div className="relative">
-                        <input
-                          type="number" min={0}
-                          value={totalSessions}
+                        <input type="number" min={0} value={totalSessions}
                           onChange={e => setTotalSessions(Number(e.target.value))}
                           className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-0 focus:border-teal-400 transition-colors"
-                          placeholder="e.g. 20"
-                        />
+                          placeholder="e.g. 20" />
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">sessions</span>
                       </div>
                     </div>
 
-                    {/* Action buttons */}
                     <div className="flex gap-2.5 pt-1">
                       <button onClick={saveChanges} disabled={saving}
                         className="flex-1 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold py-3 rounded-xl disabled:opacity-50 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2">
@@ -362,12 +336,7 @@ export default function PatientProfile() {
                           <><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg> Saved!</>
                         ) : "Save Changes"}
                       </button>
-                      <button
-                        onClick={() => {
-                          setEditing(false);
-                          setPhase(patient.phase && PHASES[patient.phase] ? patient.phase : null);
-                          setTotalSessions(patient.totalSessionsPlanned ?? 0);
-                        }}
+                      <button onClick={() => { setEditing(false); setPhase(patient.phase && PHASES[patient.phase] ? patient.phase : null); setTotalSessions(patient.totalSessionsPlanned ?? 0); }}
                         className="px-5 text-sm font-semibold text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 border-2 border-gray-100 rounded-xl transition-all">
                         Cancel
                       </button>
@@ -375,8 +344,6 @@ export default function PatientProfile() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-
-                    {/* Phase display */}
                     {currentPhase ? (
                       <div className={`flex items-center gap-3 p-3.5 rounded-xl border ${currentPhase.bg} ${currentPhase.border}`}>
                         <div className={`w-9 h-9 rounded-xl ${currentPhase.bg} border ${currentPhase.border} flex items-center justify-center flex-shrink-0`}>
@@ -399,7 +366,6 @@ export default function PatientProfile() {
                       </div>
                     )}
 
-                    {/* Stats row */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-gray-50 rounded-xl p-3 text-center">
                         <p className="text-2xl font-extrabold text-gray-800">
@@ -413,7 +379,6 @@ export default function PatientProfile() {
                       </div>
                     </div>
 
-                    {/* Progress */}
                     {patient.totalSessionsPlanned > 0 && (
                       <div>
                         <div className="flex justify-between items-center mb-2">
@@ -421,8 +386,7 @@ export default function PatientProfile() {
                           <span className="text-sm font-extrabold text-gray-700">{Math.round(progressPct)}%</span>
                         </div>
                         <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-700"
+                          <div className="h-full rounded-full transition-all duration-700"
                             style={{
                               width: `${progressPct}%`,
                               background: progressPct >= 80
@@ -430,14 +394,12 @@ export default function PatientProfile() {
                                 : progressPct >= 40
                                 ? "linear-gradient(90deg, #14b8a6, #0d9488)"
                                 : "linear-gradient(90deg, #5eead4, #14b8a6)"
-                            }}
-                          />
+                            }} />
                         </div>
                         <p className="text-xs text-gray-400 mt-1.5 font-medium">{attended} of {patient.totalSessionsPlanned} sessions completed</p>
                       </div>
                     )}
 
-                    {/* CTA if no phase */}
                     {!currentPhase && canEdit && (
                       <button onClick={() => setEditing(true)}
                         className="w-full mt-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-teal-200 bg-teal-50/60 text-teal-600 text-xs font-semibold hover:bg-teal-50 hover:border-teal-300 transition-all">
@@ -453,58 +415,39 @@ export default function PatientProfile() {
             </div>
           </div>
 
-          {/* ════════════════════════════════════════
-              RIGHT COLUMN
-          ════════════════════════════════════════ */}
+          {/* ════════ RIGHT COLUMN ════════ */}
           <div className="space-y-5">
 
-            {/* ── Stat cards ── */}
+            {/* Stat cards */}
             <div className="grid grid-cols-4 gap-4">
               {[
-                { label: "Total",    value: total,    color: "text-gray-700",    bg: "bg-gray-100",    filter: null,        icon: (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                )},
-                { label: "Attended", value: attended, color: "text-emerald-700", bg: "bg-emerald-100", filter: "ATTENDED",  icon: (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                )},
-                { label: "Missed",   value: missed,   color: "text-red-600",     bg: "bg-red-100",     filter: "MISSED",    icon: (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                )},
-                { label: "Upcoming", value: upcoming, color: "text-blue-700",    bg: "bg-blue-100",    filter: "CONFIRMED", icon: (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                )},
+                { label: "Total",    value: total,    color: "text-gray-700",    bg: "bg-gray-100",    filter: null,        icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> },
+                { label: "Attended", value: attended, color: "text-emerald-700", bg: "bg-emerald-100", filter: "ATTENDED",  icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+                { label: "Missed",   value: missed,   color: "text-red-600",     bg: "bg-red-100",     filter: "MISSED",    icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+                { label: "Upcoming", value: upcoming, color: "text-blue-700",    bg: "bg-blue-100",    filter: "CONFIRMED", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
               ].map(s => (
                 <button key={s.label}
                   onClick={() => setStatusFilter(statusFilter === s.filter ? null : s.filter)}
                   className={`bg-white rounded-2xl border shadow-sm p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5 ${
-                    statusFilter === s.filter
-                      ? "border-gray-300 ring-2 ring-gray-200 shadow-md"
-                      : "border-gray-100"
+                    statusFilter === s.filter ? "border-gray-300 ring-2 ring-gray-200 shadow-md" : "border-gray-100"
                   }`}>
-                  <div className={`w-9 h-9 ${s.bg} rounded-xl flex items-center justify-center ${s.color} mb-3`}>
-                    {s.icon}
-                  </div>
+                  <div className={`w-9 h-9 ${s.bg} rounded-xl flex items-center justify-center ${s.color} mb-3`}>{s.icon}</div>
                   <div className={`text-3xl font-black ${s.color} mb-1`}>{s.value}</div>
                   <div className="text-xs font-semibold text-gray-400">{s.label}</div>
                 </button>
               ))}
             </div>
 
-            {/* ── Tabs ── */}
+            {/* Tabs */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {/* Tab bar */}
               <div className="flex border-b border-gray-100 px-5">
                 {([
                   { key: "sessions", label: "Session History", count: filteredAppointments.length },
                   { key: "notes",    label: "Visit Notes",     count: patient.visits?.length ?? 0 },
                 ] as const).map(tab => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
+                  <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                     className={`flex items-center gap-2 px-4 py-4 text-sm font-semibold border-b-2 transition-colors mr-2 ${
-                      activeTab === tab.key
-                        ? "border-teal-500 text-teal-600"
-                        : "border-transparent text-gray-400 hover:text-gray-600"
+                      activeTab === tab.key ? "border-teal-500 text-teal-600" : "border-transparent text-gray-400 hover:text-gray-600"
                     }`}>
                     {tab.label}
                     <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
@@ -512,7 +455,6 @@ export default function PatientProfile() {
                     }`}>{tab.count}</span>
                   </button>
                 ))}
-
                 <div className="ml-auto flex items-center gap-3 py-3">
                   {activeTab === "sessions" && statusFilter && (
                     <span className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
@@ -536,7 +478,6 @@ export default function PatientProfile() {
                 </div>
               </div>
 
-              {/* Sessions tab */}
               {activeTab === "sessions" && (
                 filteredAppointments.length === 0 ? (
                   <div className="py-20 text-center">
@@ -561,7 +502,7 @@ export default function PatientProfile() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredAppointments.map((a) => {
+                        {filteredAppointments.map(a => {
                           const visit = patient.visits?.find(v => v.appointment?.id === a.id);
                           const style = STATUS_STYLES[a.status] ?? STATUS_STYLES.CANCELLED;
                           return (
@@ -591,8 +532,7 @@ export default function PatientProfile() {
                               <td className="px-5 py-4 text-xs text-gray-500 max-w-[200px]">
                                 {visit?.notes
                                   ? <span className="truncate block">{visit.notes}</span>
-                                  : <span className="text-gray-300 italic">No notes</span>
-                                }
+                                  : <span className="text-gray-300 italic">No notes</span>}
                               </td>
                             </tr>
                           );
@@ -603,9 +543,8 @@ export default function PatientProfile() {
                 )
               )}
 
-              {/* Notes tab */}
               {activeTab === "notes" && (
-                patient.visits?.length === 0 || !patient.visits ? (
+                !patient.visits?.length ? (
                   <div className="py-20 text-center">
                     <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                       <svg className="w-7 h-7 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -619,18 +558,18 @@ export default function PatientProfile() {
                   <div className="p-5 space-y-3">
                     {patient.visits.map((v, i) => (
                       <div key={i} className="flex gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100/60 transition-colors">
-                        <div className="flex-shrink-0 mt-0.5">
-                          <div className="w-8 h-8 bg-teal-100 rounded-xl flex items-center justify-center">
-                            <svg className="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          </div>
+                        <div className="w-8 h-8 bg-teal-100 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <svg className="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-gray-400 mb-1">
                             {new Date(v.visitDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
                           </p>
-                          <p className="text-sm text-gray-700 leading-relaxed">{v.notes || <span className="italic text-gray-400">No notes recorded</span>}</p>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {v.notes || <span className="italic text-gray-400">No notes recorded</span>}
+                          </p>
                         </div>
                       </div>
                     ))}

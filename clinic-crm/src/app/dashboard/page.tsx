@@ -55,6 +55,18 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
+/** Safely coerce an unknown API response to Appointment[] */
+function toAppointmentArray(raw: unknown): Appointment[] {
+  if (Array.isArray(raw)) return raw as Appointment[];
+  return [];
+}
+
+/** Safely coerce an unknown API response to Patient[] */
+function toPatientArray(raw: unknown): Patient[] {
+  if (Array.isArray(raw)) return raw as Patient[];
+  return [];
+}
+
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function getTodayIndex(): number {
@@ -137,7 +149,10 @@ function FilterPanel({ title, subtitle, onClose, children }: {
 function PatientTable({ patients, filterStatus }: {
   patients: Patient[]; filterStatus?: "NEW" | "RETURNING";
 }) {
-  const list = filterStatus ? patients.filter(p => p.status === filterStatus) : patients;
+  // ✅ FIX: guard against non-array
+  const safePatients = Array.isArray(patients) ? patients : [];
+  const list = filterStatus ? safePatients.filter(p => p.status === filterStatus) : safePatients;
+
   if (list.length === 0) return (
     <div className="py-10 text-center">
       <p className="text-sm font-semibold text-slate-400">No patients found</p>
@@ -198,7 +213,11 @@ function PatientTable({ patients, filterStatus }: {
 
 function SessionTable({ appointments }: { appointments: Appointment[] }) {
   const now = new Date();
-  if (appointments.length === 0) return (
+
+  // ✅ FIX: guard against non-array — this was the crash site
+  const safeAppointments = Array.isArray(appointments) ? appointments : [];
+
+  if (safeAppointments.length === 0) return (
     <div className="py-10 text-center">
       <p className="text-sm font-semibold text-slate-400">No sessions found</p>
     </div>
@@ -213,7 +232,7 @@ function SessionTable({ appointments }: { appointments: Appointment[] }) {
         </tr>
       </thead>
       <tbody>
-        {appointments.map((a, idx) => {
+        {safeAppointments.map((a, idx) => {
           const isNow = new Date(a.startTime) <= now && new Date(a.endTime) >= now;
           return (
             <tr key={a.id}
@@ -261,7 +280,16 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetch("/api/admin/dashboard")
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(setData)
+      .then(raw => {
+        // ✅ FIX: normalise every array field coming from the API
+        setData({
+          ...raw,
+          todayAppointments:  toAppointmentArray(raw.todayAppointments),
+          recentAppointments: toAppointmentArray(raw.recentAppointments),
+          allPatients:        toPatientArray(raw.allPatients),
+          weekCounts: Array.isArray(raw.weekCounts) ? raw.weekCounts : [0,0,0,0,0,0,0],
+        });
+      })
       .catch(console.error);
   }, []);
 
@@ -301,33 +329,37 @@ export default function AdminDashboard() {
   }
 
   async function handleBarClick(dayIndex: number) {
-    const key = `day-${dayIndex}` as ActiveFilter;
-    if (activeFilter === key) { setActiveFilter(null); setSelectedDay(null); return; }
-    setActiveFilter(key);
-    setSelectedDay(dayIndex);
-    setLoadingDay(true);
+  const key = `day-${dayIndex}` as ActiveFilter;
+  if (activeFilter === key) { setActiveFilter(null); setSelectedDay(null); return; }
+  setActiveFilter(key);
+  setSelectedDay(dayIndex);
+  setLoadingDay(true);
 
-    const today = new Date();
-    const currentDay = today.getDay();
-    const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + mondayOffset);
-    monday.setHours(0, 0, 0, 0);
+  const today = new Date();
+  const currentDay = today.getDay();
+  const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayOffset);
+  monday.setHours(0, 0, 0, 0);
 
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + dayIndex);
-    d.setHours(0, 0, 0, 0);
-    const next = new Date(d);
-    next.setDate(d.getDate() + 1);
-    next.setHours(0, 0, 0, 0);
+  const d = new Date(monday);
+  d.setDate(monday.getDate() + dayIndex);
+  d.setHours(0, 0, 0, 0);
+  const next = new Date(d);
+  next.setDate(d.getDate() + 1);
+  next.setHours(0, 0, 0, 0);
 
-    try {
-      const res = await fetch(`/api/admin/appointments?from=${d.toISOString()}&to=${next.toISOString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setDayAppointments(await res.json());
-    } catch { setDayAppointments([]); }
-    finally { setLoadingDay(false); }
+  try {
+    const res = await fetch(`/api/admin/appointments?from=${d.toISOString()}&to=${next.toISOString()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.json();
+    setDayAppointments(toAppointmentArray(raw.data)); // ✅ unwrap .data
+  } catch {
+    setDayAppointments([]);
+  } finally {
+    setLoadingDay(false);
   }
+}
 
   const todayAttended = todayAppointments.filter(a => a.status === "ATTENDED").length;
   const todayMissed   = todayAppointments.filter(a => a.status === "MISSED").length;
@@ -506,7 +538,6 @@ export default function AdminDashboard() {
                 <p className="text-xs text-slate-400 mt-0.5">{todayTotal} total</p>
               </div>
               <div className="flex items-center gap-2">
-                {/* Mini progress */}
                 {todayTotal > 0 && (
                   <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5">
                     <div className="flex gap-1">
@@ -685,7 +716,13 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentAppointments.map((a, idx) => (
+                {recentAppointments.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
+                      No recent activity
+                    </td>
+                  </tr>
+                ) : recentAppointments.map((a, idx) => (
                   <tr key={a.id}
                     className={`border-b border-slate-50 last:border-0 hover:bg-teal-50/30 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/20"}`}>
                     <td className="px-5 py-4">

@@ -82,8 +82,15 @@ export default function BookingPage() {
   });
 
   useEffect(() => {
-    fetch("/api/doctors",      { credentials: "include" }).then(r => r.json()).then(setDoctors).catch(() => {});
-    fetch("/api/patients",     { credentials: "include" }).then(r => r.json()).then(d => setPatients(Array.isArray(d) ? d : [])).catch(() => {});
+    // ✅ Fix: safely guard against non-array API responses for doctors
+    fetch("/api/doctors", { credentials: "include" })
+      .then(r => r.json())
+      .then(d => setDoctors(Array.isArray(d) ? d : []))
+      .catch(() => {});
+    fetch("/api/patients", { credentials: "include" })
+      .then(r => r.json())
+      .then(d => setPatients(Array.isArray(d) ? d : []))
+      .catch(() => {});
     loadUpcoming();
   }, []);
 

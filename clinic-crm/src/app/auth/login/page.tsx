@@ -354,7 +354,7 @@ export default function AuthPage() {
                       </div>
                       <input type="email" required value={loginEmail}
                         onChange={e => setLoginEmail(e.target.value)}
-                        placeholder="admin@clinic.com"
+                        placeholder=""
                         className={`${inputCls} pl-11`} />
                     </div>
                   </div>
@@ -380,13 +380,13 @@ export default function AuthPage() {
                     className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                     style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
                     {loading ? (
-                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Signing in…</>
+                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> signing in…</>
                     ) : (
                       <>
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
                         </svg>
-                        login
+                        sign in
                       </>
                     )}
                   </button>

@@ -123,7 +123,16 @@ const inputCls =
 
 export default function PatientsPage() {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "ADMIN";
+const isAdmin = session?.user?.role === "ADMIN";
+
+// ✅ ADD THIS HERE
+const role = session?.user?.role ?? "";
+
+function maskPhone(phone: string): string {
+  if (role === "ADMIN") return phone;
+  if (role === "DOCTOR") return `••••••${phone.slice(-4)}`;
+  return "••••••••••";
+}
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
@@ -705,8 +714,10 @@ export default function PatientsPage() {
 
                       {/* Phone */}
                       <td className="px-5 py-4">
-                        <span className="text-sm font-medium text-slate-600">{p.phone}</span>
-                      </td>
+  <span className="text-sm font-medium text-slate-600">
+    {maskPhone(p.phone)}
+  </span>
+</td>
 
                       {/* Sessions */}
                       <td className="px-5 py-4">

@@ -1,10 +1,19 @@
+/**
+ * src/app/api/patients/route.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * GET  /api/patients  — list patients (RBAC + activityStatus)
+ * POST /api/patients — create a new patient
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { Gender, Phase, PatientStatus } from "@prisma/client";
+import { requireAuth, getPatientFilter } from "@/lib/rbac";
+import { fetchPatientsWithActivity } from "@/lib/patientActivity";
 
-// ── Helper: collision-resistant patient code ──────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ Helper: collision-safe patient code generator
+// ─────────────────────────────────────────────────────────────────────────────
 async function generatePatientCode(): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `PHY-${year}-`;
@@ -22,106 +31,149 @@ async function generatePatientCode(): Promise<string> {
   return `${prefix}${String(nextNumber).padStart(4, "0")}`;
 }
 
-// ── GET — List all patients ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ GET: Patients (RBAC + search + computed activity)
+// ─────────────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let session;
+  try {
+    session = await requireAuth();
+  } catch (err) {
+    return err as NextResponse;
+  }
 
-  const search = req.nextUrl.searchParams.get("search") ?? "";
-  const status = req.nextUrl.searchParams.get("status") ?? "";
+  try {
+    const searchTerm = req.nextUrl.searchParams.get("search") ?? "";
+    const statusFilter = req.nextUrl.searchParams.get("status") ?? "";
 
-  const patients = await prisma.patient.findMany({
-    where: {
-      ...(search
-        ? {
-            OR: [
-              { name: { contains: search, mode: "insensitive" } },
-              { phone: { contains: search } },
-              { patientCode: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-      ...(status ? { status: status as PatientStatus } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    include: {
-      _count: { select: { appointments: true } },
-      appointments: {
-        orderBy: { startTime: "desc" },
-        take: 1,
-        select: { startTime: true },
-      },
-    },
-  });
+    // RBAC filter (doctor sees only their patients)
+    const rbacScope = getPatientFilter(session);
 
-  return NextResponse.json(patients);
+    // Optimized query with computed activityStatus
+    const patients = await fetchPatientsWithActivity({
+      where: rbacScope,
+      searchTerm,
+      statusFilter,
+    });
+
+    return NextResponse.json(patients);
+  } catch (error) {
+    console.error("GET /patients error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch patients" },
+      { status: 500 }
+    );
+  }
 }
 
-// ── POST — Create a new patient ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ POST: Create Patient (RBAC + validation + retry-safe)
+// ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let session;
+  try {
+    session = await requireAuth();
+  } catch (err) {
+    return err as NextResponse;
+  }
+
+  // ❗ Restrict doctors
+  if (session.user.role === "DOCTOR") {
+    return NextResponse.json(
+      { error: "Doctors are not permitted to create patient records" },
+      { status: 403 }
+    );
+  }
 
   let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  if (!body.name || typeof body.name !== "string") {
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
-  }
-  if (!body.phone || typeof body.phone !== "string") {
-    return NextResponse.json({ error: "phone is required" }, { status: 400 });
-  }
-
-  // Check duplicate phone
-  const existing = await prisma.patient.findUnique({ where: { phone: body.phone as string } });
-  if (existing) {
     return NextResponse.json(
-      { error: "Patient with this phone already exists", existing },
-      { status: 409 }
+      { error: "Invalid JSON body" },
+      { status: 400 }
     );
   }
 
-  // Retry up to 5 times to handle rare simultaneous-request collisions
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const patientCode = await generatePatientCode();
-
-      const patient = await prisma.patient.create({
-        data: {
-          patientCode,
-          name:              body.name as string,
-          phone:             body.phone as string,
-          email:             (body.email as string)  || null,
-          age:               body.age ? parseInt(body.age as string, 10) : null,
-          gender:            (body.gender as Gender) || null,
-          address:           (body.address as string) || null,
-          purposeOfVisit:    (body.purposeOfVisit as string) || null,
-          medicalConditions: (body.medicalConditions as string) || null,
-          status:            (body.status as PatientStatus) || PatientStatus.NEW,
-          phase:             (body.phase as Phase) ||  null,
-          totalSessionsPlanned: body.totalSessionsPlanned
-            ? parseInt(body.totalSessionsPlanned as string, 10)
-            : 0,
-        },
-      });
-
-      return NextResponse.json(patient, { status: 201 });
-    } catch (err: unknown) {
-      const prismaErr = err as { code?: string };
-
-      // P2002 = unique constraint violation — retry with a fresh code
-      if (prismaErr.code === "P2002" && attempt < 4) {
-        continue;
-      }
-
-      console.error("Create patient error:", err);
-      return NextResponse.json({ error: "Failed to create patient" }, { status: 500 });
-    }
+  // ✅ Validation
+  if (!body.name || typeof body.name !== "string") {
+    return NextResponse.json(
+      { error: "name is required" },
+      { status: 400 }
+    );
   }
 
-  return NextResponse.json({ error: "Failed to generate a unique patient code" }, { status: 500 });
+  if (!body.phone || typeof body.phone !== "string") {
+    return NextResponse.json(
+      { error: "phone is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    // ✅ Duplicate phone check
+    const existing = await prisma.patient.findUnique({
+      where: { phone: body.phone as string },
+    });
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "Patient with this phone already exists", existing },
+        { status: 409 }
+      );
+    }
+
+    // ✅ Retry loop for patientCode collision
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const patientCode = await generatePatientCode();
+
+        const patient = await prisma.patient.create({
+          data: {
+            patientCode,
+            name: body.name as string,
+            phone: body.phone as string,
+            email: (body.email as string) || null,
+            age: body.age ? parseInt(body.age as string, 10) : null,
+            gender: (body.gender as Gender) || null,
+            address: (body.address as string) || null,
+            purposeOfVisit: (body.purposeOfVisit as string) || null,
+            medicalConditions: (body.medicalConditions as string) || null,
+            status:
+              (body.status as PatientStatus) || PatientStatus.NEW,
+            phase: (body.phase as Phase) || null,
+            totalSessionsPlanned: body.totalSessionsPlanned
+              ? parseInt(body.totalSessionsPlanned as string, 10)
+              : 0,
+          },
+        });
+
+        return NextResponse.json(patient, { status: 201 });
+      } catch (err: unknown) {
+        const prismaErr = err as { code?: string };
+
+        // Retry on unique constraint collision
+        if (prismaErr.code === "P2002" && attempt < 4) {
+          continue;
+        }
+
+        console.error("Create patient error:", err);
+        return NextResponse.json(
+          { error: "Failed to create patient" },
+          { status: 500 }
+        );
+      }
+    }
+
+    return NextResponse.json(
+      { error: "Failed to generate a unique patient code" },
+      { status: 500 }
+    );
+  } catch (error) {
+    console.error("POST /patients error:", error);
+    return NextResponse.json(
+      { error: "Unexpected server error" },
+      { status: 500 }
+    );
+  }
 }

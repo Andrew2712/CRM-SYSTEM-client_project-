@@ -1,122 +1,210 @@
+/**
+ * src/app/api/admin/dashboard/route.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * GET /api/admin/dashboard
+ *
+ * Returns:
+ * - Patient stats (NEW / RETURNING / ACTIVE / INACTIVE)
+ * - Today's appointments
+ * - Weekly stats
+ * - Recent activity
+ *
+ * Access: ADMIN only
+ */
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireAuth, requireRole } from "@/lib/rbac";
+import { enrichWithActivity } from "@/lib/patientActivity";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  if (session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // ─────────────────────────────────────────────────────────────
+  // 1️⃣ Auth + Role Guard
+  // ─────────────────────────────────────────────────────────────
+  let session;
+  try {
+    session = await requireAuth();
+    requireRole(session, ["ADMIN"]);
+  } catch (err) {
+    return err as NextResponse;
   }
 
-  const now = new Date();
+  try {
+    const now = new Date();
 
-  // Today's range
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(now);
-  todayEnd.setHours(23, 59, 59, 999);
+    // ─────────────────────────────────────────────────────────────
+    // 2️⃣ Date Ranges
+    // ─────────────────────────────────────────────────────────────
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
 
-  // This week's range (Mon–Sun)
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
 
-  const [
-    allPatients,
-    todayAppointments,
-    missedWeekCount,
-    recentAppointments,
-    weekAppointments,
-  ] = await Promise.all([
-    // All patients with appointment count
-    prisma.patient.findMany({
-      select: {
-        id: true,
-        name: true,
-        patientCode: true,
-        status: true,
-        _count: { select: { appointments: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday
+    weekStart.setHours(0, 0, 0, 0);
 
-    // Today's appointments
-    prisma.appointment.findMany({
-      where: { startTime: { gte: todayStart, lte: todayEnd } },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            name: true,
-            patientCode: true,
-            status: true,
-            _count: { select: { appointments: true } },
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+
+    // ─────────────────────────────────────────────────────────────
+    // 3️⃣ Parallel Queries (Optimized 🚀)
+    // ─────────────────────────────────────────────────────────────
+    const [
+      allPatients,
+      todayAppointments,
+      missedWeekCount,
+      recentAppointments,
+      weekAppointments,
+    ] = await Promise.all([
+      // ✅ All patients (with last attended appointment for activity)
+      prisma.patient.findMany({
+        select: {
+          id: true,
+          name: true,
+          patientCode: true,
+          status: true,
+          createdAt: true,
+
+          _count: {
+            select: { appointments: true },
+          },
+
+          // ⚡ Required for activity computation
+          appointments: {
+            where: { status: "ATTENDED" },
+            orderBy: { startTime: "desc" },
+            take: 1,
+            select: { startTime: true },
           },
         },
-        doctor: { select: { name: true } },
-      },
-      orderBy: { startTime: "asc" },
-    }),
+        orderBy: { createdAt: "desc" },
+      }),
 
-    // Missed appointments this week
-    prisma.appointment.count({
-      where: {
-        status: "MISSED",
-        startTime: { gte: weekStart, lt: weekEnd },
-      },
-    }),
-
-    // Recent appointments (last 20)
-    prisma.appointment.findMany({
-      take: 20,
-      orderBy: { startTime: "desc" },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            name: true,
-            patientCode: true,
-            status: true,
-            _count: { select: { appointments: true } },
+      // ✅ Today's appointments
+      prisma.appointment.findMany({
+        where: {
+          startTime: { gte: todayStart, lte: todayEnd },
+        },
+        orderBy: { startTime: "asc" },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              patientCode: true,
+              status: true,
+              _count: { select: { appointments: true } },
+            },
+          },
+          doctor: {
+            select: { id: true, name: true },
           },
         },
-        doctor: { select: { name: true } },
-      },
-    }),
+      }),
 
-    // This week's appointments for bar chart (Mon–Sun)
-    prisma.appointment.findMany({
-      where: { startTime: { gte: weekStart, lt: weekEnd } },
-      select: { startTime: true },
-    }),
-  ]);
+      // ✅ Missed this week
+      prisma.appointment.count({
+        where: {
+          status: "MISSED",
+          startTime: { gte: weekStart, lt: weekEnd },
+        },
+      }),
 
-  // Build weekCounts[0..6] = Mon..Sun
-  const weekCounts = Array(7).fill(0);
-  for (const appt of weekAppointments) {
-    const day = (new Date(appt.startTime).getDay() + 6) % 7; // Mon=0
-    weekCounts[day]++;
+      // ✅ Recent activity
+      prisma.appointment.findMany({
+        take: 20,
+        orderBy: { startTime: "desc" },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              patientCode: true,
+              status: true,
+              _count: { select: { appointments: true } },
+            },
+          },
+          doctor: {
+            select: { id: true, name: true },
+          },
+        },
+      }),
+
+      // ✅ Weekly breakdown
+      prisma.appointment.findMany({
+        where: {
+          startTime: { gte: weekStart, lt: weekEnd },
+        },
+        select: { startTime: true },
+      }),
+    ]);
+
+    // ─────────────────────────────────────────────────────────────
+    // 4️⃣ Weekly Chart Data (Mon → Sun)
+    // ─────────────────────────────────────────────────────────────
+    const weekCounts = Array(7).fill(0);
+
+    for (const appt of weekAppointments) {
+      const day = (new Date(appt.startTime).getDay() + 6) % 7;
+      weekCounts[day]++;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 5️⃣ Enrich Patients with Activity
+    // ─────────────────────────────────────────────────────────────
+    const enrichedPatients = enrichWithActivity(allPatients);
+
+    // ─────────────────────────────────────────────────────────────
+    // 6️⃣ Patient Metrics
+    // ─────────────────────────────────────────────────────────────
+    const totalPatients = enrichedPatients.length;
+
+    const newPatients = enrichedPatients.filter(
+      (p) => p.status === "NEW"
+    ).length;
+
+    const returningPatients = enrichedPatients.filter(
+      (p) => p.status === "RETURNING"
+    ).length;
+
+    const activePatients = enrichedPatients.filter(
+      (p) => p.activityStatus === "ACTIVE"
+    ).length;
+
+    const inactivePatients = enrichedPatients.filter(
+      (p) => p.activityStatus === "INACTIVE"
+    ).length;
+
+    // ─────────────────────────────────────────────────────────────
+    // 7️⃣ Response
+    // ─────────────────────────────────────────────────────────────
+    return NextResponse.json({
+      totalPatients,
+      newPatients,
+      returningPatients,
+      activePatients,
+      inactivePatients,
+
+      todayTotal: todayAppointments.length,
+      missedWeek: missedWeekCount,
+      confirmedUpcoming: todayAppointments.filter(
+        (a) => a.status === "CONFIRMED"
+      ).length,
+
+      todayAppointments,
+      recentAppointments,
+      weekCounts,
+
+      allPatients: enrichedPatients,
+    });
+  } catch (error) {
+    console.error("Admin dashboard error:", error);
+
+    return NextResponse.json(
+      { error: "Failed to load dashboard data" },
+      { status: 500 }
+    );
   }
-
-  const totalPatients = allPatients.length;
-  const newPatients = allPatients.filter((p) => p.status === "NEW").length;
-  const returningPatients = allPatients.filter((p) => p.status === "RETURNING").length;
-
-  return NextResponse.json({
-    totalPatients,
-    newPatients,
-    returningPatients,
-    todayTotal: todayAppointments.length,
-    missedWeek: missedWeekCount,
-    confirmedUpcoming: todayAppointments.filter((a) => a.status === "CONFIRMED").length,
-    todayAppointments,
-    recentAppointments,
-    weekCounts,
-    allPatients,
-  });
 }
