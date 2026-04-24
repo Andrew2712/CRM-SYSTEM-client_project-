@@ -8,9 +8,11 @@ import {
   LayoutGrid,
   Users,
   CalendarDays,
-  Stethoscope,
+  Timer,
   BarChart3,
   Bell,
+  KeyRound,
+  UserPlus,
 } from "lucide-react";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
@@ -27,7 +29,7 @@ const NAV = [
   {
     group: "VIEWS",
     items: [
-      { href: "/dashboard/doctor",        label: "Doctor",        icon: Stethoscope,  roles: ["ADMIN", "DOCTOR"] },
+      { href: "/dashboard/doctor",        label: "Session View",        icon: Timer,  roles: ["ADMIN", "DOCTOR"] },
     ],
   },
   {
@@ -35,6 +37,13 @@ const NAV = [
     items: [
       { href: "/dashboard/analytics",     label: "Analytics",     icon: BarChart3,    roles: ["ADMIN"] },
       { href: "/dashboard/notifications", label: "Notifications", icon: Bell,         roles: ["ADMIN", "RECEPTIONIST"] },
+    ],
+  },
+  {
+    group: "ACCOUNT",
+    items: [
+      { href: "/dashboard/signup",         label: "Sign Up",       icon: UserPlus,  roles: ["ADMIN"] },
+      { href: "/dashboard/reset-password", label: "Reset Password", icon: KeyRound, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
     ],
   },
 ];

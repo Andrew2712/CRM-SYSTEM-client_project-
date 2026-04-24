@@ -131,7 +131,7 @@ const role = session?.user?.role ?? "";
 function maskPhone(phone: string): string {
   if (role === "ADMIN") return phone;
   if (role === "DOCTOR") return `••••••${phone.slice(-4)}`;
-  return "••••••••••";
+  return phone;
 }
 
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -405,18 +405,6 @@ function maskPhone(phone: string): string {
             )}
           </button>
 
-          {isAdmin && (
-            <button
-              onClick={() => { setShowDoctorForm(!showDoctorForm); setShowPatientForm(false); }}
-              className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-all shadow-sm hover:shadow-md"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Add Doctor
-            </button>
-          )}
 
           <button
             onClick={() => { setShowPatientForm(!showPatientForm); setShowDoctorForm(false); }}

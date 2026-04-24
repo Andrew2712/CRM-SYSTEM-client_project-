@@ -12,7 +12,7 @@ const ROLE_REDIRECT: Record<string, string> = {
   RECEPTIONIST: "/dashboard/booking",
 };
 
-const inputCls = "w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-400 transition-all";
+const inputCls = "w-full bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-400 transition-all";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5";
 
 export default function AuthPage() {
@@ -290,272 +290,309 @@ export default function AuthPage() {
             <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg, #0a5c47, #0f8f6e, #14b8a6)" }} />
 
             <div className="p-8">
-              {/* Title */}
-              <div className="mb-7">
-                <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                  {view === "login"  && "Welcome back"}
-                  {view === "signup" && "Create account"}
-                  {view === "forgot" && "Reset password"}
-                </h1>
-                <p className="text-sm text-slate-400 mt-1 font-medium">
-                  {view === "login"  && "Sign in to your Vyayama account"}
-                  {view === "signup" && "Set up a new staff account"}
-                  {view === "forgot" && "Enter your email to reset access"}
-                </p>
-              </div>
 
-              {/* Tab switcher */}
-              <div className="flex gap-1 mb-7 bg-slate-100 p-1 rounded-2xl">
-                {(["login", "signup", "forgot"] as View[]).map(v => (
-                  <button key={v} type="button"
-                    onClick={() => { setView(v); reset(); }}
-                    className={`flex-1 text-xs py-2.5 rounded-xl font-bold transition-all ${
-                      view === v
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}>
-                    {v === "forgot" ? "Reset" : v.charAt(0).toUpperCase() + v.slice(1)}
-                  </button>
-                ))}
-              </div>
-
-              {/* Banners */}
-              {error && (
-                <div className="mb-5 flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
-                  <div className="w-6 h-6 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </div>
-                  <p className="text-sm font-semibold text-red-600">{error}</p>
-                </div>
-              )}
-              {success && (
-                <div className="mb-5 flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                  <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                  </div>
-                  <p className="text-sm font-semibold text-emerald-700">{success}</p>
-                </div>
-              )}
-
-              {/* ── LOGIN ── */}
+              {/* ── LOGIN VIEW ── */}
               {view === "login" && (
-                <form onSubmit={handleLogin} className="space-y-5">
-                  <div>
-                    <label className={labelCls}>Email address</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <input type="email" required value={loginEmail}
-                        onChange={e => setLoginEmail(e.target.value)}
-                        placeholder=""
-                        className={`${inputCls} pl-11`} />
-                    </div>
+                <>
+                  {/* Title — no tab switcher */}
+                  <div className="mb-8">
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                      Welcome back
+                    </h1>
+                    <p className="text-sm text-slate-400 mt-1 font-medium">
+                      Sign in to your Vyayama account
+                    </p>
                   </div>
-                  <div>
-                    <label className={labelCls}>Password</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                      </div>
-                      <input type={showLoginPwd ? "text" : "password"} required value={loginPassword}
-                        onChange={e => setLoginPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className={`${inputCls} pl-11 pr-12`} />
-                      <button type="button" onClick={() => setShowLoginPwd(!showLoginPwd)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                        <EyeIcon show={showLoginPwd} />
-                      </button>
-                    </div>
-                  </div>
-                  <button type="submit" disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
-                    style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
-                    {loading ? (
-                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> signing in…</>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                        </svg>
-                        sign in
-                      </>
-                    )}
-                  </button>
-                  <p className="text-center text-xs text-slate-400 font-medium">
-                    Forgot your password?{" "}
-                    <button type="button" onClick={() => { setView("forgot"); reset(); }}
-                      className="font-bold text-teal-600 hover:text-teal-700 hover:underline">
-                      Reset it here
-                    </button>
-                  </p>
-                </form>
-              )}
 
-              {/* ── SIGNUP ── */}
-              {view === "signup" && (
-                <form onSubmit={handleSignup} className="space-y-4">
-                  <div>
-                    <label className={labelCls}>Full name</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  {/* Error / success banners */}
+                  {error && (
+                    <div className="mb-5 flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
+                      <div className="w-6 h-6 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </div>
-                      <input required value={signupName} onChange={e => setSignupName(e.target.value)}
-                        placeholder="Dr. John Smith" className={`${inputCls} pl-11`} />
+                      <p className="text-sm font-semibold text-red-600">{error}</p>
                     </div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Email address</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  )}
+                  {success && (
+                    <div className="mb-5 flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                      <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                         </svg>
                       </div>
-                      <input type="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)}
-                        placeholder="doctor@clinic.com" className={`${inputCls} pl-11`} />
+                      <p className="text-sm font-semibold text-emerald-700">{success}</p>
                     </div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Password</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
+                  )}
+
+                  <form onSubmit={handleLogin} className="space-y-5">
+                    {/* Email */}
+                    <div>
+                      <label className={labelCls}>Email address</label>
+                      <div className="relative">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                          <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <input
+                          type="email"
+                          required
+                          value={loginEmail}
+                          onChange={e => setLoginEmail(e.target.value)}
+                          placeholder="admin@clinic.com"
+                          className={`${inputCls} pl-11`}
+                        />
                       </div>
-                      <input type={showSignupPwd ? "text" : "password"} required minLength={6}
-                        value={signupPassword} onChange={e => setSignupPassword(e.target.value)}
-                        placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
-                      <button type="button" onClick={() => setShowSignupPwd(!showSignupPwd)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                        <EyeIcon show={showSignupPwd} />
-                      </button>
                     </div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Role</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { value: "DOCTOR",       label: "Doctor",       icon: "🩺" },
-                        { value: "ADMIN",        label: "Admin",        icon: "⚙️" },
-                        { value: "RECEPTIONIST", label: "Receptionist", icon: "📋" },
-                      ].map(r => (
-                        <button key={r.value} type="button"
-                          onClick={() => setSignupRole(r.value)}
-                          className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-xs font-semibold transition-all ${
-                            signupRole === r.value
-                              ? "border-teal-400 bg-teal-50 text-teal-700"
-                              : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300"
-                          }`}>
-                          <span className="text-base">{r.icon}</span>
-                          {r.label}
+
+                    {/* Password */}
+                    <div>
+                      <label className={labelCls}>Password</label>
+                      <div className="relative">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                          <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </div>
+                        <input
+                          type={showLoginPwd ? "text" : "password"}
+                          required
+                          value={loginPassword}
+                          onChange={e => setLoginPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className={`${inputCls} pl-11 pr-12`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowLoginPwd(!showLoginPwd)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                          <EyeIcon show={showLoginPwd} />
                         </button>
-                      ))}
+                      </div>
                     </div>
-                  </div>
-                  <button type="submit" disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:-translate-y-0.5"
-                    style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
-                    {loading ? (
-                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Creating account…</>
-                    ) : "Create Account"}
-                  </button>
-                </form>
+
+                    {/* Sign in button */}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-4 rounded-2xl disabled:opacity-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 mt-2"
+                      style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}
+                    >
+                      {loading ? (
+                        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> logging in…</>
+                      ) : (
+                        <>
+                          {/* Left arrow icon matching the image */}
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                          </svg>
+                          login
+                        </>
+                      )}
+                    </button>
+
+                    {/* Forgot password link */}
+                    <p className="text-center text-sm text-slate-400 font-medium pt-1">
+                      Forgot your password? <b>Contact Admin...</b>{" "}
+                      {/* 
+                      <button
+                        type="button"
+                        onClick={() => { setView("forgot"); reset(); }}
+                        className="font-bold text-teal-600 hover:text-teal-700 hover:underline"
+                      >
+                        Contact Admin
+                      </button>*/}
+                    </p>
+                  </form>
+
+                  
+                </>
               )}
 
-              {/* ── FORGOT ── */}
-              {view === "forgot" && (
-                <form onSubmit={handleForgot} className="space-y-4">
-                  <div>
-                    <label className={labelCls}>Registered email</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <input type="email" required value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
-                        placeholder="your@email.com" className={`${inputCls} pl-11`} />
-                    </div>
+              {/* ── SIGNUP & FORGOT views keep their tab switcher ── */}
+              {(view === "signup" || view === "forgot") && (
+                <>
+                  {/* Title */}
+                  <div className="mb-7">
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                      {view === "signup" ? "Create account" : "Reset password"}
+                    </h1>
+                    <p className="text-sm text-slate-400 mt-1 font-medium">
+                      {view === "signup" ? "Set up a new staff account" : "Enter your email to reset access"}
+                    </p>
                   </div>
-                  <div>
-                    <label className={labelCls}>New password</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                      </div>
-                      <input type={showForgotPwd ? "text" : "password"} required minLength={6}
-                        value={forgotPassword} onChange={e => setForgotPassword(e.target.value)}
-                        placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
-                      <button type="button" onClick={() => setShowForgotPwd(!showForgotPwd)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                        <EyeIcon show={showForgotPwd} />
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Confirm new password</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                      </div>
-                      <input type="password" required value={forgotConfirm} onChange={e => setForgotConfirm(e.target.value)}
-                        placeholder="Repeat new password" className={`${inputCls} pl-11`} />
-                    </div>
-                  </div>
-                  <button type="submit" disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:-translate-y-0.5"
-                    style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
-                    {loading ? (
-                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Updating…</>
-                    ) : "Update Password"}
-                  </button>
-                </form>
-              )}
 
-              {/* Demo credentials */}
-              {view === "login" && (
-                <div className="mt-6 bg-slate-50 border border-slate-100 rounded-2xl p-4">
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <div className="w-4 h-4 bg-slate-200 rounded-md flex items-center justify-center">
-                      <svg className="w-2.5 h-2.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Demo Credentials</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    {[
-                      { role: "Admin",  email: "admin@clinic.com",     pass: "admin123",  color: "text-teal-700",   bg: "bg-teal-50 border-teal-100" },
-                      { role: "Doctor", email: "dr.sayalee@clinic.com",  pass: "doctor123", color: "text-blue-700",   bg: "bg-blue-50 border-blue-100" },
-                    ].map(c => (
-                      <button key={c.role} type="button"
-                        onClick={() => { setLoginEmail(c.email); setLoginPassword(c.pass); }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-semibold transition-all hover:shadow-sm ${c.bg}`}>
-                        <span className={`font-bold ${c.color}`}>{c.role}</span>
-                        <span className="text-slate-400 font-mono">{c.email}</span>
+                  {/* Tab switcher (signup / forgot only) */}
+                  <div className="flex gap-1 mb-7 bg-slate-100 p-1 rounded-2xl">
+                    {(["login", "signup", "forgot"] as View[]).map(v => (
+                      <button key={v} type="button"
+                        onClick={() => { setView(v); reset(); }}
+                        className={`flex-1 text-xs py-2.5 rounded-xl font-bold transition-all ${
+                          view === v
+                            ? "bg-white text-slate-900 shadow-sm"
+                            : "text-slate-400 hover:text-slate-600"
+                        }`}>
+                        {v === "forgot" ? "Reset" : v.charAt(0).toUpperCase() + v.slice(1)}
                       </button>
                     ))}
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-2 text-center">Click a row to auto-fill credentials</p>
-                </div>
+
+                  {/* Banners */}
+                  {error && (
+                    <div className="mb-5 flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
+                      <div className="w-6 h-6 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-semibold text-red-600">{error}</p>
+                    </div>
+                  )}
+                  {success && (
+                    <div className="mb-5 flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                      <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                        </svg>
+                      </div>
+                      <p className="text-sm font-semibold text-emerald-700">{success}</p>
+                    </div>
+                  )}
+
+                  {/* ── SIGNUP ── */}
+                  {view === "signup" && (
+                    <form onSubmit={handleSignup} className="space-y-4">
+                      <div>
+                        <label className={labelCls}>Full name</label>
+                        <div className="relative">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                          </div>
+                          <input required value={signupName} onChange={e => setSignupName(e.target.value)}
+                            placeholder="Dr. John Smith" className={`${inputCls} pl-11`} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Email address</label>
+                        <div className="relative">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <input type="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)}
+                            placeholder="doctor@clinic.com" className={`${inputCls} pl-11`} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Password</label>
+                        <div className="relative">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          </div>
+                          <input type={showSignupPwd ? "text" : "password"} required minLength={6}
+                            value={signupPassword} onChange={e => setSignupPassword(e.target.value)}
+                            placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
+                          <button type="button" onClick={() => setShowSignupPwd(!showSignupPwd)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <EyeIcon show={showSignupPwd} />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Role</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { value: "DOCTOR",       label: "Doctor",       icon: "🩺" },
+                            { value: "ADMIN",        label: "Admin",        icon: "⚙️" },
+                            { value: "RECEPTIONIST", label: "Receptionist", icon: "📋" },
+                          ].map(r => (
+                            <button key={r.value} type="button"
+                              onClick={() => setSignupRole(r.value)}
+                              className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-xs font-semibold transition-all ${
+                                signupRole === r.value
+                                  ? "border-teal-400 bg-teal-50 text-teal-700"
+                                  : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300"
+                              }`}>
+                              <span className="text-base">{r.icon}</span>
+                              {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button type="submit" disabled={loading}
+                        className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:-translate-y-0.5"
+                        style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
+                        {loading ? (
+                          <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Creating account…</>
+                        ) : "Create Account"}
+                      </button>
+                    </form>
+                  )}
+
+                  {/* ── FORGOT ── */}
+                  {view === "forgot" && (
+                    <form onSubmit={handleForgot} className="space-y-4">
+                      <div>
+                        <label className={labelCls}>Registered email</label>
+                        <div className="relative">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <input type="email" required value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                            placeholder="your@email.com" className={`${inputCls} pl-11`} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>New password</label>
+                        <div className="relative">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          </div>
+                          <input type={showForgotPwd ? "text" : "password"} required minLength={6}
+                            value={forgotPassword} onChange={e => setForgotPassword(e.target.value)}
+                            placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
+                          <button type="button" onClick={() => setShowForgotPwd(!showForgotPwd)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <EyeIcon show={showForgotPwd} />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Confirm new password</label>
+                        <div className="relative">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                          </div>
+                          <input type="password" required value={forgotConfirm} onChange={e => setForgotConfirm(e.target.value)}
+                            placeholder="Repeat new password" className={`${inputCls} pl-11`} />
+                        </div>
+                      </div>
+                      <button type="submit" disabled={loading}
+                        className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:-translate-y-0.5"
+                        style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
+                        {loading ? (
+                          <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Updating…</>
+                        ) : "Update Password"}
+                      </button>
+                    </form>
+                  )}
+                </>
               )}
+
             </div>
           </div>
 

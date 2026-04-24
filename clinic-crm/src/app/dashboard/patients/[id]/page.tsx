@@ -39,7 +39,7 @@ function maskPhone(phone: string, role: string): string {
   if (!phone) return "—";
   if (role === "ADMIN") return phone;
   if (role === "DOCTOR") return `••••••${phone.slice(-4)}`;
-  return "••••••••••";
+  return phone;
 }
 
 // ── InfoRow — pure component, no hooks ───────────────────────────────────────

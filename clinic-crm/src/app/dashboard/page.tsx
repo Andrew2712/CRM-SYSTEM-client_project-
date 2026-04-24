@@ -385,9 +385,33 @@ export default function AdminDashboard() {
               {" · "}Weekly overview
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 text-teal-700 rounded-xl px-4 py-2 text-xs font-bold shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-            Live
+          <div className="flex items-center gap-2.5">
+            {/* Sign Up quick action */}
+            <Link
+              href="/dashboard/signup"
+              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 rounded-xl px-3.5 py-2 text-xs font-bold shadow-sm transition-all"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              Sign Up
+            </Link>
+            {/* Reset Password quick action */}
+            <Link
+              href="/dashboard/reset-password"
+              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 rounded-xl px-3.5 py-2 text-xs font-bold shadow-sm transition-all"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              Reset Password
+            </Link>
+            <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 text-teal-700 rounded-xl px-4 py-2 text-xs font-bold shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+              Live
+            </div>
           </div>
         </div>
 
