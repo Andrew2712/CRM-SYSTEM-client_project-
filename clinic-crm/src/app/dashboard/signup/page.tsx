@@ -79,6 +79,7 @@ export default function DashboardSignupPage() {
 
   const [name,     setName]     = useState("");
   const [email,    setEmail]    = useState("");
+  const [phone,    setPhone]    = useState("");
   const [password, setPassword] = useState("");
   const [role,     setRole]     = useState<"DOCTOR" | "ADMIN" | "RECEPTIONIST">("DOCTOR");
   const [showPwd,  setShowPwd]  = useState(false);
@@ -86,13 +87,27 @@ export default function DashboardSignupPage() {
   const [error,    setError]    = useState("");
   const [success,  setSuccess]  = useState("");
 
+  // ── Phone validation helper ────────────────────────────────────────────────
+  function isValidPhone(val: string): boolean {
+    return /^\+?[\d\s\-().]{7,20}$/.test(val.trim());
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
 
+    // Client-side validation
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (!phone.trim()) {
+      setError("Phone number is required.");
+      return;
+    }
+    if (!isValidPhone(phone)) {
+      setError("Please enter a valid phone number (7–20 digits, optional + prefix).");
       return;
     }
 
@@ -102,7 +117,7 @@ export default function DashboardSignupPage() {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name, email, password, role, phone: phone.trim() }),
       });
       const data = await res.json();
 
@@ -112,7 +127,7 @@ export default function DashboardSignupPage() {
       }
 
       setSuccess(`Account created for ${data.name}. Redirecting to dashboard…`);
-      setName(""); setEmail(""); setPassword("");
+      setName(""); setEmail(""); setPassword(""); setPhone("");
       setTimeout(() => router.push("/dashboard"), 2000);
     } catch {
       setError("Network error. Please check your connection and try again.");
@@ -236,6 +251,33 @@ export default function DashboardSignupPage() {
                 </div>
               </div>
 
+              {/* Phone number — NEW FIELD ────────────────────────────────── */}
+              <div>
+                <label className={labelCls}>
+                  Phone number
+                  <span className="ml-1.5 text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    className={`${inputCls} pl-11`}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5 ml-0.5">
+                  Include country code for international numbers (e.g. +91 for India)
+                </p>
+              </div>
+
               {/* Password */}
               <div>
                 <label className={labelCls}>Password</label>
@@ -265,7 +307,7 @@ export default function DashboardSignupPage() {
                 </div>
               </div>
 
-              {/* Role selector — rich card style */}
+              {/* Role selector — rich card style (unchanged) */}
               <div>
                 <label className={labelCls}>Role</label>
                 <div className="grid grid-cols-3 gap-2.5">
@@ -331,41 +373,37 @@ export default function DashboardSignupPage() {
             Role permissions
           </p>
           <div className="space-y-3">
-  {[
-    {
-      role: "Doctor",
-      icon: "🩺",
-      color: "text-teal-700 bg-teal-50 border-teal-200",
-      perms: ["View assigned patients", "Manage sessions", "Doctor dashboard"],
-    },
-    {
-      role: "Admin",
-      icon: "⚙️",
-      color: "text-violet-700 bg-violet-50 border-violet-200",
-      perms: ["Full system access", "Analytics & reports", "User management"],
-    },
-    {
-      role: "Receptionist",
-      icon: "📋",
-      color: "text-amber-700 bg-amber-50 border-amber-200",
-      perms: ["Booking management", "Patient check-in", "Notifications"],
-    },
-  ].map(({ role: r, icon, color, perms }) => (
-    <div key={r} className="flex items-start gap-3">
-      
-      {/* Role badge with icon */}
-      <span className={`text-[10px] font-black px-2 py-1 rounded-lg border flex items-center gap-1 ${color}`}>
-        <span>{icon}</span>
-        <span>{r}</span>
-      </span>
-
-      {/* Permissions */}
-      <p className="text-xs text-slate-400 font-medium leading-relaxed">
-        {perms.join(" · ")}
-      </p>
-    </div>
-  ))}
-</div>
+            {[
+              {
+                role: "Doctor",
+                icon: "🩺",
+                color: "text-teal-700 bg-teal-50 border-teal-200",
+                perms: ["View assigned patients", "Manage sessions", "Doctor dashboard"],
+              },
+              {
+                role: "Admin",
+                icon: "⚙️",
+                color: "text-violet-700 bg-violet-50 border-violet-200",
+                perms: ["Full system access", "Analytics & reports", "User management"],
+              },
+              {
+                role: "Receptionist",
+                icon: "📋",
+                color: "text-amber-700 bg-amber-50 border-amber-200",
+                perms: ["Booking management", "Patient check-in", "Notifications"],
+              },
+            ].map(({ role: r, icon, color, perms }) => (
+              <div key={r} className="flex items-start gap-3">
+                <span className={`text-[10px] font-black px-2 py-1 rounded-lg border flex items-center gap-1 ${color}`}>
+                  <span>{icon}</span>
+                  <span>{r}</span>
+                </span>
+                <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                  {perms.join(" · ")}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
 
       </div>

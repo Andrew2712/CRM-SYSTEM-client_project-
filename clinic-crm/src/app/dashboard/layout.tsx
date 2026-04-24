@@ -13,23 +13,46 @@ import {
   Bell,
   KeyRound,
   UserPlus,
+  UserCircle,
+  UsersRound,
 } from "lucide-react";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
 const NAV = [
   {
+    group: "Profile",
+    items: [
+      // ── NEW: Staff Registry — Admin only ────────────────────────────────────
+      
+      // ── NEW: My Profile — all roles ─────────────────────────────────────────
+      {
+        href:  "/dashboard/staff/${staff.id}",
+        label: "My Profile",
+        icon:  UserCircle,
+        roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"],
+      },
+    ],
+  },
+  {
     group: "MAIN",
     items: [
-      { href: "/dashboard",               label: "Admin",         icon: LayoutGrid,   roles: ["ADMIN"] },
+      { href: "/dashboard",               label: "Dashboard",         icon: LayoutGrid,   roles: ["ADMIN"] },
+      {
+        href:  "/dashboard/staff",
+        label: "Staff ",
+        icon:  UsersRound,
+        roles: ["ADMIN"],
+      },
       { href: "/dashboard/patients",      label: "Patients",      icon: Users,        roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
       { href: "/dashboard/booking",       label: "Booking",       icon: CalendarDays, roles: ["ADMIN", "RECEPTIONIST"] },
+
     ],
   },
   {
     group: "VIEWS",
     items: [
-      { href: "/dashboard/doctor",        label: "Session View",        icon: Timer,  roles: ["ADMIN", "DOCTOR"] },
+      { href: "/dashboard/doctor",        label: "Session View",  icon: Timer,        roles: ["ADMIN", "DOCTOR"] },
     ],
   },
   {
@@ -39,11 +62,12 @@ const NAV = [
       { href: "/dashboard/notifications", label: "Notifications", icon: Bell,         roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
+
   {
     group: "ACCOUNT",
     items: [
-      { href: "/dashboard/signup",         label: "Sign Up",       icon: UserPlus,  roles: ["ADMIN"] },
-      { href: "/dashboard/reset-password", label: "Reset Password", icon: KeyRound, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
+      { href: "/dashboard/signup",          label: "Sign Up",        icon: UserPlus, roles: ["ADMIN"] },
+      { href: "/dashboard/reset-password",  label: "Reset Password", icon: KeyRound, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
     ],
   },
 ];
@@ -102,7 +126,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* ── Navigation ── */}
         <nav className="relative flex-1 overflow-y-auto px-3 py-5 space-y-6">
           {NAV.map(({ group, items }) => {
-            const visible = items.filter(item => item.roles.includes(role));
+            const visible = items.filter((item) => item.roles.includes(role));
             if (visible.length === 0) return null;
 
             return (

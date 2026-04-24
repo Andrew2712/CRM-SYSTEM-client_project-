@@ -12,6 +12,7 @@ model User {
   email              String              @unique
   passwordHash       String
   role               Role                @default(RECEPTIONIST)
+  phone              String?
   createdAt          DateTime            @default(now())
   appointments       Appointment[]       @relation("DoctorAppointments")
   auditLogs          AuditLog[]

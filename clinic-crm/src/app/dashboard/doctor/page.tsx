@@ -482,10 +482,7 @@ export default function DoctorPage() {
                                     <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
                                     {isNow && a.status === "CONFIRMED" ? "In Progress" : a.status.charAt(0) + a.status.slice(1).toLowerCase()}
                                   </span>
-                                  <Link href={`/dashboard/patients/${a.patient.id}`}
-                          className="flex-shrink-0 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-white hover:bg-teal-50 border border-teal-100 px-2.5 py-1.5 rounded-lg transition-all ml-2">
-                          Profile
-                        </Link>
+                                  
                                 </div>
                               </div>
                             </div>
@@ -657,7 +654,7 @@ export default function DoctorPage() {
                         </div>
                         <Link href={`/dashboard/patients/${a.patient.id}`}
                           className="flex-shrink-0 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-white hover:bg-teal-50 border border-teal-100 px-2.5 py-1.5 rounded-lg transition-all ml-2">
-                          Open
+                          Profile
                         </Link>
                       </div>
                     );
