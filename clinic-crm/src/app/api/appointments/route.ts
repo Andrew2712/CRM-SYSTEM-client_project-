@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, getAppointmentFilter } from "@/lib/rbac";
 import { SessionType } from "@prisma/client";
+import { sendBookingConfirmations } from "@/lib/notificationWorkflow";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ✅ GET: Fetch appointments (RBAC + optional date filtering)
@@ -168,6 +169,11 @@ export async function POST(req: NextRequest) {
         data: { status: "RETURNING" },
       });
     }
+
+    // ✅ Fire booking confirmation notifications (non-blocking — errors logged, won't break booking)
+    sendBookingConfirmations(appointment.id).catch((err) =>
+      console.error("[Notifications] Booking confirmation failed:", err)
+    );
 
     return NextResponse.json(appointment, { status: 201 });
   } catch (error) {

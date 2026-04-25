@@ -18,6 +18,7 @@ import {
   requireRole,
   assertCanAccessAppointment,
 } from "@/lib/rbac";
+import { sendMissedSessionNotifications } from "@/lib/notificationWorkflow";
 
 const VALID_STATUSES = ["ATTENDED", "MISSED", "CONFIRMED", "CANCELLED"] as const;
 type UpdatableStatus = (typeof VALID_STATUSES)[number];
@@ -113,7 +114,14 @@ export async function PATCH(
       });
     }
 
-    // 8️⃣ Cache revalidation (important for Next.js app router)
+    // 8️⃣ If MISSED → fire missed session notifications (non-blocking)
+    if (status === "MISSED") {
+      sendMissedSessionNotifications(id).catch((err) =>
+        console.error("[Notifications] Missed session notification failed:", err)
+      );
+    }
+
+    // 9️⃣ Cache revalidation (important for Next.js app router)
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/doctor");
 
