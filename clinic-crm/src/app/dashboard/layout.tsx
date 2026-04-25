@@ -23,14 +23,12 @@ const NAV = [
   {
     group: "Profile",
     items: [
-      // ── NEW: Staff Registry — Admin only ────────────────────────────────────
-      
-      // ── NEW: My Profile — all roles ─────────────────────────────────────────
       {
-        href:  "/dashboard/staff/${staff.id}",
         label: "My Profile",
-        icon:  UserCircle,
+        icon: UserCircle,
         roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"],
+        // href will be dynamically set in the component
+        getHref: (userId: string) => `/dashboard/staff/${userId}`,
       },
     ],
   },
@@ -46,7 +44,6 @@ const NAV = [
       },
       { href: "/dashboard/patients",      label: "Patients",      icon: Users,        roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
       { href: "/dashboard/booking",       label: "Booking",       icon: CalendarDays, roles: ["ADMIN", "RECEPTIONIST"] },
-
     ],
   },
   {
@@ -62,7 +59,6 @@ const NAV = [
       { href: "/dashboard/notifications", label: "Notifications", icon: Bell,         roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
-
   {
     group: "ACCOUNT",
     items: [
@@ -85,10 +81,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
 
   const role      = session?.user?.role ?? "";
+  const userId    = session?.user?.id ?? "";           // ← Important: get user id
   const userName  = session?.user?.name ?? "";
   const userEmail = session?.user?.email ?? "";
   const initials  = userName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
   const roleCfg   = ROLE_CONFIG[role];
+
+  // Dynamically build visible nav items with correct href for "My Profile"
+  const visibleNav = NAV.map((group) => {
+    const visibleItems = group.items
+      .filter((item) => item.roles.includes(role))
+      .map((item) => {
+        if ("getHref" in item && typeof item.getHref === "function") {
+          return {
+            ...item,
+            href: item.getHref(userId),
+          };
+        }
+        return item as { href: string; label: string; icon: any };
+      });
+
+    return {
+      ...group,
+      items: visibleItems,
+    };
+  }).filter((group) => group.items.length > 0);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -125,56 +142,51 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* ── Navigation ── */}
         <nav className="relative flex-1 overflow-y-auto px-3 py-5 space-y-6">
-          {NAV.map(({ group, items }) => {
-            const visible = items.filter((item) => item.roles.includes(role));
-            if (visible.length === 0) return null;
+          {visibleNav.map(({ group, items }) => (
+            <div key={group}>
+              <p className="text-[9px] font-black text-white/35 uppercase tracking-[0.15em] px-3 mb-2">
+                {group}
+              </p>
+              <ul className="space-y-1">
+                {items.map(({ label, href, icon: Icon }) => {
+                  const isActive =
+                    href === "/dashboard"
+                      ? pathname === "/dashboard"
+                      : pathname === href || pathname.startsWith(href + "/");
 
-            return (
-              <div key={group}>
-                <p className="text-[9px] font-black text-white/35 uppercase tracking-[0.15em] px-3 mb-2">
-                  {group}
-                </p>
-                <ul className="space-y-1">
-                  {visible.map(({ label, href, icon: Icon }) => {
-                    const isActive =
-                      href === "/dashboard"
-                        ? pathname === "/dashboard"
-                        : pathname === href || pathname.startsWith(href + "/");
-
-                    return (
-                      <li key={href}>
-                        <Link
-                          href={href}
-                          className={`
-                            group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold
-                            transition-all duration-150 relative
-                            ${isActive
-                              ? "bg-white/15 text-white shadow-sm"
-                              : "text-white/60 hover:bg-white/10 hover:text-white"
-                            }
-                          `}
-                        >
-                          {/* Active left indicator */}
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full" />
-                          )}
-                          <Icon
-                            size={16}
-                            strokeWidth={isActive ? 2.5 : 2}
-                            className={isActive ? "text-white" : "text-white/50 group-hover:text-white/80"}
-                          />
-                          {label}
-                          {isActive && (
-                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60" />
-                          )}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            );
-          })}
+                  return (
+                    <li key={href}>
+                      <Link
+                        href={href}
+                        className={`
+                          group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold
+                          transition-all duration-150 relative
+                          ${isActive
+                            ? "bg-white/15 text-white shadow-sm"
+                            : "text-white/60 hover:bg-white/10 hover:text-white"
+                          }
+                        `}
+                      >
+                        {/* Active left indicator */}
+                        {isActive && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full" />
+                        )}
+                        <Icon
+                          size={16}
+                          strokeWidth={isActive ? 2.5 : 2}
+                          className={isActive ? "text-white" : "text-white/50 group-hover:text-white/80"}
+                        />
+                        {label}
+                        {isActive && (
+                          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60" />
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
         </nav>
 
         {/* ── User footer ── */}
@@ -210,7 +222,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>
-
     </div>
   );
 }

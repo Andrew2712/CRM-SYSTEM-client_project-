@@ -129,10 +129,40 @@ export default function StaffRegistryPage() {
   const [search,     setSearch]     = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportDone, setExportDone] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const [deleting,      setDeleting]      = useState(false);
   const [deleteSuccess, setDeleteSuccess] = useState("");
+
+
+  function exportStaffToCSV(staffList: StaffMember[]) {
+  const BOM = "\uFEFF";
+  const headers = ["Staff ID", "Name", "Email", "Role", "Phone", "Joined Date"];
+  const escape = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = staffList.map((s) => [
+    s.id,
+    s.name,
+    s.email,
+    ROLE_CONFIG[s.role]?.label ?? s.role,
+    s.phone ?? "",
+    new Date(s.createdAt).toLocaleDateString("en-IN", {
+      day: "2-digit", month: "short", year: "numeric",
+    }),
+  ]);
+  const csv = BOM + [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  const date = new Date().toLocaleDateString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+  }).replace(/ /g, "-");
+  link.download = `Staff-Registry-${date}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
   // ── Fetch staff ────────────────────────────────────────────────────────────
   function loadStaff() {
@@ -176,6 +206,18 @@ export default function StaffRegistryPage() {
     }
     setDeleting(false);
   }
+
+  async function handleExport() {
+  setExporting(true);
+  try {
+    exportStaffToCSV(staff); // staff already in state — no extra fetch needed
+    setExportDone(true);
+    setTimeout(() => setExportDone(false), 3000);
+  } catch {
+    alert("Export failed. Please try again.");
+  }
+  setExporting(false);
+}
 
   // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -284,6 +326,28 @@ export default function StaffRegistryPage() {
             </p>
           </div>
 
+          <button
+  onClick={handleExport}
+  disabled={exporting || staff.length === 0}
+  className={`flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl border transition-all shadow-sm ${
+    exportDone
+      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+      : "bg-white border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50"
+  } disabled:opacity-50`}
+>
+  {exportDone ? (
+    <>✓ Exported!</>
+  ) : (
+    <>
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+      {exporting ? "Exporting…" : "Export CSV"}
+    </>
+  )}
+</button>
+
           <Link
             href="/dashboard/signup"
             className="flex items-center gap-2 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-teal-200/40 hover:shadow-xl hover:-translate-y-0.5 transition-all"
@@ -295,6 +359,7 @@ export default function StaffRegistryPage() {
             </svg>
             Add Staff Member
           </Link>
+
         </div>
 
         {/* ── Delete success toast ── */}
@@ -481,7 +546,7 @@ export default function StaffRegistryPage() {
 
                             {/* Profile / View — ✅ fixed: member.id instead of staff.id */}
                             <Link
-                              href={`/dashboard/staff/${selectedId ?? member.id}`}
+                              href={`/dashboard/staff/${member.id}`}
                               title="View profile"
                               className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-100 hover:border-teal-200 px-3 py-1.5 rounded-lg transition-all whitespace-nowrap"
                             >

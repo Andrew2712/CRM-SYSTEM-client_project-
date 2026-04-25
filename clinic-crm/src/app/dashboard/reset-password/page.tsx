@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSession } from "next-auth/react";
 
 // ─── Shared style tokens (mirrors auth/login/page.tsx) ────────────────────────
 
@@ -125,7 +126,21 @@ export default function DashboardResetPasswordPage() {
       setEmail("");
       setNewPwd("");
       setConfirmPwd("");
-      setTimeout(() => router.push("/dashboard"), 2000);
+      setTimeout(async () => {
+  const session = await getSession();
+
+  const role = session?.user?.role;
+
+  if (role === "ADMIN") {
+    router.push("/dashboard");
+  } else if (role === "DOCTOR") {
+    router.push("/dashboard/doctor");
+  } else if (role === "RECEPTIONIST") {
+    router.push("/dashboard/booking");
+  } else {
+    router.push("/");
+  }
+}, 2000);
     } catch {
       setError("Network error. Please check your connection and try again.");
     } finally {
@@ -311,7 +326,7 @@ export default function DashboardResetPasswordPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
                         d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
-                    Update Password
+                    Update  Password
                   </>
                 )}
               </button>

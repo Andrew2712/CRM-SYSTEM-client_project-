@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 
@@ -73,7 +74,7 @@ const ROLE_CONFIG: Record<
   },
 };
 
-// ─── Avatar component (reuses pattern from other dashboard pages) ─────────────
+// ─── Avatar component ─────────────────────────────────────────────────────────
 
 function Avatar({ name, size = "lg" }: { name: string; size?: "sm" | "md" | "lg" }) {
   const initials = name
@@ -130,14 +131,22 @@ function InfoRow({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function StaffDashboardPage() {
+export default function StaffProfilePage() {
   const { data: session } = useSession();
+
+  // ✅ FIX: Read the dynamic [id] segment from the URL
+  const params  = useParams();
+  const staffId = params?.id as string;
+
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
 
   useEffect(() => {
-    fetch("/api/staff/me", { credentials: "include" })
+    if (!staffId) return;
+
+    // ✅ FIX: Fetch /api/staff/[id] instead of /api/staff/me
+    fetch(`/api/staff/${staffId}`, { credentials: "include" })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -147,10 +156,10 @@ export default function StaffDashboardPage() {
         setLoading(false);
       })
       .catch(() => {
-        setError("Failed to load your profile. Please try again.");
+        setError("Failed to load this staff profile. Please try again.");
         setLoading(false);
       });
-  }, []);
+  }, [staffId]);
 
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
@@ -167,7 +176,7 @@ export default function StaffDashboardPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/20 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-[3px] border-teal-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-400 font-medium">Loading your profile…</p>
+          <p className="text-sm text-slate-400 font-medium">Loading staff profile…</p>
         </div>
       </div>
     );
@@ -186,6 +195,12 @@ export default function StaffDashboardPage() {
           </div>
           <p className="text-sm font-bold text-slate-800 mb-2">Could not load profile</p>
           <p className="text-xs text-slate-400">{error || "An unexpected error occurred."}</p>
+          <Link
+            href="/dashboard/staff"
+            className="inline-flex items-center gap-2 mt-4 text-xs font-bold text-teal-600 hover:text-teal-700 bg-teal-50 border border-teal-200 px-4 py-2 rounded-xl transition-all"
+          >
+            ← Back to Staff Registry
+          </Link>
         </div>
       </div>
     );
@@ -209,7 +224,7 @@ export default function StaffDashboardPage() {
                     d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">My Profile</h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Staff Profile</h1>
             </div>
             <p className="text-sm text-slate-400 ml-[42px]">{today}</p>
           </div>
@@ -217,25 +232,25 @@ export default function StaffDashboardPage() {
           {/* Quick actions */}
           <div className="flex items-center gap-2.5">
             <Link
-              href="/dashboard/reset-password"
+              href="/dashboard/staff"
               className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 rounded-xl px-3.5 py-2 text-xs font-bold shadow-sm transition-all"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Reset Password
+              Back to Registry
             </Link>
-            {session?.user?.role === "ADMIN" && (
+            {/* Only show Reset Password if viewing own profile */}
+            {session?.user?.id === profile.id && (
               <Link
-                href="/dashboard/staff-registry"
-                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700 hover:bg-violet-50 rounded-xl px-3.5 py-2 text-xs font-bold shadow-sm transition-all"
+                href="/dashboard/reset-password"
+                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 rounded-xl px-3.5 py-2 text-xs font-bold shadow-sm transition-all"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
-                Staff Registry
+                Reset Password
               </Link>
             )}
           </div>
@@ -429,13 +444,12 @@ export default function StaffDashboardPage() {
                   d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
               </svg>
             </div>
-            <h2 className="text-sm font-bold text-slate-800">Your Permissions</h2>
+            <h2 className="text-sm font-bold text-slate-800">Permissions</h2>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             {(profile.role === "ADMIN" || profile.role === "DOCTOR" || profile.role === "RECEPTIONIST") && (
               <>
-                {/* Permissions per role */}
                 {profile.role === "ADMIN" && [
                   { label: "Admin Dashboard",     icon: "📊", active: true  },
                   { label: "Patient Management",  icon: "👥", active: true  },
