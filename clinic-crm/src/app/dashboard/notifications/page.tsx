@@ -2,8 +2,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { labelForSentinel } from "@/lib/notifications";
 
-// ─── Channel icons as SVG strings (server-safe) ───────────────────────────────
+// ─── Channel icons ────────────────────────────────────────────────────────────
 
 const CHANNEL_CONFIG = [
   {
@@ -63,12 +64,11 @@ const CHANNEL_CONFIG = [
 const TIMELINE = [
   {
     label: "Booking confirmed",
-    desc: "Email + WhatsApp + Calendar invite sent immediately",
+    desc: "Email + WhatsApp sent immediately",
     color: "#10b981",
     bg: "bg-emerald-50",
     border: "border-emerald-200",
     textColor: "text-emerald-700",
-    dot: "bg-emerald-500",
     icon: (
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -77,12 +77,11 @@ const TIMELINE = [
   },
   {
     label: "24 hours before",
-    desc: "Reminder email + WhatsApp message sent to patient",
+    desc: "WhatsApp reminder sent to patient",
     color: "#3b82f6",
     bg: "bg-blue-50",
     border: "border-blue-200",
     textColor: "text-blue-700",
-    dot: "bg-blue-500",
     icon: (
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -91,12 +90,11 @@ const TIMELINE = [
   },
   {
     label: "2 hours before",
-    desc: "Final WhatsApp nudge + Google Calendar popup reminder",
+    desc: "Final WhatsApp nudge to patient",
     color: "#f59e0b",
     bg: "bg-amber-50",
     border: "border-amber-200",
     textColor: "text-amber-700",
-    dot: "bg-amber-500",
     icon: (
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -105,12 +103,11 @@ const TIMELINE = [
   },
   {
     label: "Session missed",
-    desc: "Status → MISSED · Doctor notified · Patient record updated",
+    desc: "Status → MISSED · Doctor notified · Patient alerted",
     color: "#ef4444",
     bg: "bg-red-50",
     border: "border-red-200",
     textColor: "text-red-600",
-    dot: "bg-red-500",
     icon: (
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -126,17 +123,36 @@ const STATUS_CONFIG: Record<string, { pill: string; dot: string; label: string }
 };
 
 const CHANNEL_PILL: Record<string, string> = {
-  EMAIL:     "bg-red-50 text-red-600 border border-red-100",
-  WHATSAPP:  "bg-green-50 text-green-700 border border-green-100",
-  CALENDAR:  "bg-blue-50 text-blue-700 border border-blue-100",
+  EMAIL:    "bg-red-50 text-red-600 border border-red-100",
+  WHATSAPP: "bg-green-50 text-green-700 border border-green-100",
+  CALENDAR: "bg-blue-50 text-blue-700 border border-blue-100",
 };
+
+// ─── Format a real Date for display (IST) ────────────────────────────────────
+function formatDisplayDate(date: Date | null): { date: string; time: string } {
+  if (!date) return { date: "—", time: "—" };
+  return {
+    date: new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(date),
+    time: new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date),
+  };
+}
 
 export default async function NotificationsPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/auth/login");
 
   const notifications = await prisma.notification.findMany({
-    orderBy: { scheduledAt: "desc" },
+    orderBy: { sentAt: "desc" }, // ← order by real sent time, not sentinel
     take: 50,
     include: {
       appointment: {
@@ -206,7 +222,7 @@ export default async function NotificationsPage() {
             <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">Notification Log</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Last {notifications.length} notifications across all channels</p>
+                <p className="text-xs text-slate-400 mt-0.5">Last {notifications.length} notifications — times shown in IST</p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-xl">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -225,7 +241,7 @@ export default async function NotificationsPage() {
                 </div>
                 <p className="text-sm font-bold text-slate-500">No notifications yet</p>
                 <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                  Notifications will appear here once bookings are made and the pipeline triggers
+                  Notifications appear here once bookings are made
                 </p>
               </div>
             ) : (
@@ -233,31 +249,38 @@ export default async function NotificationsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-slate-50/80 border-b border-slate-100">
-                      {["Patient", "Channel", "Scheduled", "Status"].map(h => (
+                      {["Patient / Type", "Channel", "Sent At (IST)", "Status"].map(h => (
                         <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {notifications.map((n, idx) => {
-                      const cfg = STATUS_CONFIG[n.status] ?? STATUS_CONFIG.PENDING;
-                      const chPill = CHANNEL_PILL[n.channel] ?? "bg-slate-100 text-slate-500 border border-slate-200";
-                      const patientInitials = n.appointment.patient.name
+                      const cfg     = STATUS_CONFIG[n.status] ?? STATUS_CONFIG.PENDING;
+                      const chPill  = CHANNEL_PILL[n.channel] ?? "bg-slate-100 text-slate-500 border border-slate-200";
+                      const initials = n.appointment.patient.name
                         .split(" ").map((x: string) => x[0]).join("").slice(0, 2).toUpperCase();
+
+                      // ✅ Use sentAt (real trigger time), fall back to "pending" if null
+                      const displayTime = formatDisplayDate(n.sentAt ?? null);
+
+                      // ✅ Human-readable notification type from sentinel
+                      const notifType = labelForSentinel(n.scheduledAt);
 
                       return (
                         <tr key={n.id}
                           className={`border-b border-slate-50 last:border-0 hover:bg-teal-50/30 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/20"}`}>
 
-                          {/* Patient */}
+                          {/* Patient + notification type */}
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-2.5">
                               <div className="w-8 h-8 rounded-xl bg-teal-100 flex items-center justify-center text-teal-700 text-xs font-black flex-shrink-0">
-                                {patientInitials}
+                                {initials}
                               </div>
                               <div>
                                 <p className="text-sm font-bold text-slate-800">{n.appointment.patient.name}</p>
-                                <p className="text-xs text-slate-400">{n.appointment.doctor.name}</p>
+                                {/* ✅ Shows what kind of notification this was */}
+                                <p className="text-[11px] text-slate-400 mt-0.5">{notifType}</p>
                               </div>
                             </div>
                           </td>
@@ -275,23 +298,20 @@ export default async function NotificationsPage() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                 </svg>
                               )}
-                              {n.channel === "CALENDAR" && (
-                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                              )}
                               {n.channel.charAt(0) + n.channel.slice(1).toLowerCase()}
                             </span>
                           </td>
 
-                          {/* Scheduled */}
+                          {/* ✅ Real sent time in IST — no more "1 Jan 2000" */}
                           <td className="px-5 py-4">
-                            <p className="text-sm font-semibold text-slate-700">
-                              {new Date(n.scheduledAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                            </p>
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {new Date(n.scheduledAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                            </p>
+                            {n.sentAt ? (
+                              <>
+                                <p className="text-sm font-semibold text-slate-700">{displayTime.date}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">{displayTime.time}</p>
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">Not sent yet</span>
+                            )}
                           </td>
 
                           {/* Status */}
@@ -343,32 +363,24 @@ export default async function NotificationsPage() {
                 <p className="text-xs text-slate-400 mt-0.5">Automated sequence per booking</p>
               </div>
               <div className="p-5">
-                <div className="relative">
-                  {/* Vertical line */}
-                  <div className="absolute left-5 top-5 bottom-5 w-px bg-slate-100" />
-
-                  <div className="space-y-3">
-                    {TIMELINE.map((t, i) => (
-                      <div key={i} className={`relative flex items-start gap-4 p-4 rounded-2xl border ${t.bg} ${t.border}`}>
-                        {/* Step number */}
-                        <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 text-white shadow-sm"
-                          style={{ background: t.color }}>
-                          {t.icon}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold ${t.textColor}`}>{t.label}</p>
-                          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{t.desc}</p>
-                        </div>
-                        {/* Step badge */}
-                        <span className="text-[9px] font-black text-slate-400 bg-white border border-slate-100 px-2 py-1 rounded-lg flex-shrink-0 self-start">
-                          STEP {i + 1}
-                        </span>
+                <div className="space-y-3">
+                  {TIMELINE.map((t, i) => (
+                    <div key={i} className={`flex items-start gap-4 p-4 rounded-2xl border ${t.bg} ${t.border}`}>
+                      <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 text-white shadow-sm"
+                        style={{ background: t.color }}>
+                        {t.icon}
                       </div>
-                    ))}
-                  </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-bold ${t.textColor}`}>{t.label}</p>
+                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{t.desc}</p>
+                      </div>
+                      <span className="text-[9px] font-black text-slate-400 bg-white border border-slate-100 px-2 py-1 rounded-lg flex-shrink-0 self-start">
+                        STEP {i + 1}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
-                {/* Info note */}
                 <div className="mt-4 flex items-start gap-3 p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
                   <div className="w-5 h-5 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                     <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -376,7 +388,7 @@ export default async function NotificationsPage() {
                     </svg>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    All notifications are triggered automatically when a booking is confirmed. No manual action required.
+                    All times shown in IST (Asia/Kolkata). Notifications fire automatically — no manual action needed.
                   </p>
                 </div>
               </div>
