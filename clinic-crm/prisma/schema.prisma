@@ -7,17 +7,21 @@ datasource db {
 }
 
 model User {
-  id                 String              @id @default(cuid())
-  name               String
-  email              String              @unique
-  passwordHash       String
-  role               Role                @default(RECEPTIONIST)
-  phone              String?
-  createdAt          DateTime            @default(now())
-  appointments       Appointment[]       @relation("DoctorAppointments")
-  auditLogs          AuditLog[]
-  availability       AvailabilitySlot[]
-  inAppNotifications InAppNotification[]
+  id                    String                      @id @default(cuid())
+  name                  String
+  email                 String                      @unique
+  passwordHash          String
+  role                  Role                        @default(RECEPTIONIST)
+  phone                 String?
+  createdAt             DateTime                    @default(now())
+  appointments          Appointment[]               @relation("DoctorAppointments")
+  auditLogs             AuditLog[]
+  availability          AvailabilitySlot[]
+  inAppNotifications    InAppNotification[]
+  holidayRequests       HolidayRequest[]            @relation("DoctorHolidayRequests")
+  reassignmentRequests  DoctorReassignmentRequest[] @relation("ReassignmentRequester")
+  reassignmentsFrom     DoctorReassignmentRequest[] @relation("ReassignmentFrom")
+  reassignmentsTo       DoctorReassignmentRequest[] @relation("ReassignmentTo")
 }
 
 model Patient {
@@ -41,20 +45,21 @@ model Patient {
 }
 
 model Appointment {
-  id              String            @id @default(cuid())
-  patientId       String
-  doctorId        String
-  startTime       DateTime
-  endTime         DateTime
-  status          AppointmentStatus @default(CONFIRMED)
-  sessionType     SessionType
-  rescheduleCount Int               @default(0)
-  createdAt       DateTime          @default(now())
-  doctor          User              @relation("DoctorAppointments", fields: [doctorId], references: [id])
-  patient         Patient           @relation(fields: [patientId], references: [id])
-  notifications   Notification[]
-  visit           PatientVisit?
-  notes    String?
+  id                   String                      @id @default(cuid())
+  patientId            String
+  doctorId             String
+  startTime            DateTime
+  endTime              DateTime
+  status               AppointmentStatus           @default(CONFIRMED)
+  sessionType          SessionType
+  rescheduleCount      Int                         @default(0)
+  createdAt            DateTime                    @default(now())
+  doctor               User                        @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  patient              Patient                     @relation(fields: [patientId], references: [id])
+  notifications        Notification[]
+  visit                PatientVisit?
+  notes                String?
+  reassignmentRequests DoctorReassignmentRequest[]
 }
 
 model PatientVisit {
@@ -110,6 +115,31 @@ model InAppNotification {
   entityId  String?
   createdAt DateTime       @default(now())
   user      User           @relation(fields: [userId], references: [id])
+}
+
+model HolidayRequest {
+  id        String               @id @default(cuid())
+  doctorId  String
+  date      DateTime
+  reason    String
+  status    HolidayRequestStatus @default(PENDING)
+  createdAt DateTime             @default(now())
+  doctor    User                 @relation("DoctorHolidayRequests", fields: [doctorId], references: [id])
+}
+
+model DoctorReassignmentRequest {
+  id                String             @id @default(cuid())
+  appointmentId     String
+  requestedByUserId String
+  fromDoctorId      String
+  toDoctorId        String
+  status            ReassignmentStatus @default(PENDING)
+  notes             String?
+  createdAt         DateTime           @default(now())
+  appointment       Appointment        @relation(fields: [appointmentId], references: [id])
+  requestedBy       User               @relation("ReassignmentRequester", fields: [requestedByUserId], references: [id])
+  fromDoctor        User               @relation("ReassignmentFrom", fields: [fromDoctorId], references: [id])
+  toDoctor          User               @relation("ReassignmentTo", fields: [toDoctorId], references: [id])
 }
 
 enum Role {
@@ -168,4 +198,21 @@ enum InAppNotifType {
   APPOINTMENT_MISSED
   SESSION_COMPLETED
   SYSTEM
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_RESCHEDULED
+  DOCTOR_REASSIGNED
+  HOLIDAY_REQUEST
+  REASSIGNMENT_REQUEST
+}
+
+enum HolidayRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReassignmentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }

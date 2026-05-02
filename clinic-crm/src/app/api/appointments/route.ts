@@ -10,6 +10,8 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, getAppointmentFilter } from "@/lib/rbac";
 import { SessionType } from "@prisma/client";
 import { sendBookingConfirmations } from "@/lib/notificationWorkflow";
+import { createInAppNotification, notifyAdminAndReceptionist } from "@/lib/inAppNotifications";
+import { toIST } from "@/lib/timezone";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ✅ GET: Fetch appointments (RBAC + optional date filtering)

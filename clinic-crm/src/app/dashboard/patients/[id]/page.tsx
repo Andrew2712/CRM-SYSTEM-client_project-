@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import EditProfileModal from "@/components/EditProfileModal";
 
 type Appointment = {
   id: string; startTime: string; sessionType: string;
@@ -43,6 +44,8 @@ function maskPhone(phone: string, role: string): string {
 }
 
 // ── InfoRow — pure component, no hooks ───────────────────────────────────────
+// NOTE: EditProfileModal was incorrectly placed here before — it has been moved
+// into PatientProfile where all the required state variables are in scope.
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
@@ -60,7 +63,7 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 // ── Main component ────────────────────────────────────────────────────────────
 export default function PatientProfile() {
   const params = useParams();
-  const { data: session } = useSession(); // ✅ ONLY inside component body
+  const { data: session } = useSession();
 
   const role = session?.user?.role ?? "";
 
@@ -75,6 +78,8 @@ export default function PatientProfile() {
   const [activeTab, setActiveTab] = useState<"sessions" | "notes">("sessions");
 
   const canEdit = ["ADMIN", "DOCTOR"].includes(role);
+  const canEditProfile = ["ADMIN", "RECEPTIONIST"].includes(role);
+  const [editOpen, setEditOpen] = useState(false);
 
   async function loadPatient() {
     const res = await fetch(`/api/patients/${params.id}`, { credentials: "include" });
@@ -193,11 +198,23 @@ export default function PatientProfile() {
 
               <div className="px-5 pb-5 pt-14">
                 <div className="mb-5">
-                  <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">{patient.name}</h1>
-                  <p className="text-xs text-gray-400 font-mono mt-0.5">{patient.patientCode}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">{patient.name}</h1>
+                      <p className="text-xs text-gray-400 font-mono mt-0.5">{patient.patientCode}</p>
+                    </div>
+                    {canEditProfile && (
+                      <button
+                        onClick={() => setEditOpen(true)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-all flex-shrink-0"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        Edit Profile
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
-                  {/* ✅ maskPhone called here, inside component, using role from hook */}
                   <InfoRow icon="📞" label="Phone"      value={maskPhone(patient.phone, role)} />
                   <InfoRow icon="✉️" label="Email"      value={patient.email ?? "—"} />
                   <InfoRow icon="🎂" label="Age"        value={patient.age ? `${patient.age} years old` : "—"} />
@@ -580,6 +597,35 @@ export default function PatientProfile() {
           </div>
         </div>
       </div>
+
+      {/* ── Edit Profile Modal — rendered here so all state is in scope ── */}
+      {editOpen && (
+        <EditProfileModal
+          type="patient"
+          entityId={patient.id}
+          initialData={{
+            name: patient.name,
+            phone: patient.phone,
+            email: patient.email ?? "",
+            age: patient.age ?? "",
+            gender: patient.gender ?? "",
+            address: patient.address ?? "",
+            purposeOfVisit: patient.purposeOfVisit ?? "",
+            medicalConditions: patient.medicalConditions ?? "",
+            phase: patient.phase ?? "",
+            totalSessionsPlanned: patient.totalSessionsPlanned,
+          }}
+          userRole={role}
+          onClose={() => setEditOpen(false)}
+          onSuccess={(updated) => {
+            setPatient(updated as Patient);
+            setTotalSessions((updated as Patient).totalSessionsPlanned ?? 0);
+            setPhase((updated as Patient).phase ?? null);
+            setEditOpen(false);
+          }}
+        />
+      )}
+
     </div>
   );
 }

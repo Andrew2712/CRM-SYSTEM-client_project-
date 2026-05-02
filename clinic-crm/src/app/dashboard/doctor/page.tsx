@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import HolidayRequestForm from "@/components/HolidayRequestForm";
 
 type Appointment = {
   id: string;
@@ -684,6 +685,11 @@ export default function DoctorPage() {
                 ))}
               </div>
             </div>
+
+            {/* Holiday Request — Doctor only */}
+            {session?.user?.role === "DOCTOR" && (
+              <HolidayRequestForm />
+            )}
           </div>
         </div>
       )}

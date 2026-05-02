@@ -1,9 +1,14 @@
 "use client";
 
+/**
+ * src/app/dashboard/layout.tsx
+ */
+
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import SignOutButton from "@/components/SignOutButton";
+import NotificationBell from "@/components/NotificationBell";
 import {
   LayoutGrid,
   Users,
@@ -15,6 +20,8 @@ import {
   UserPlus,
   UserCircle,
   UsersRound,
+  CalendarOff,
+  UserCheck,
 } from "lucide-react";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
@@ -27,7 +34,6 @@ const NAV = [
         label: "My Profile",
         icon: UserCircle,
         roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"],
-        // href will be dynamically set in the component
         getHref: (userId: string) => `/dashboard/staff/${userId}`,
       },
     ],
@@ -35,35 +41,37 @@ const NAV = [
   {
     group: "MAIN",
     items: [
-      { href: "/dashboard",               label: "Dashboard",         icon: LayoutGrid,   roles: ["ADMIN"] },
-      {
-        href:  "/dashboard/staff",
-        label: "Staff ",
-        icon:  UsersRound,
-        roles: ["ADMIN"],
-      },
-      { href: "/dashboard/patients",      label: "Patients",      icon: Users,        roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
-      { href: "/dashboard/booking",       label: "Booking",       icon: CalendarDays, roles: ["ADMIN", "RECEPTIONIST"] },
+      { href: "/dashboard",          label: "Dashboard",    icon: LayoutGrid,   roles: ["ADMIN"] },
+      { href: "/dashboard/staff",    label: "Staff",        icon: UsersRound,   roles: ["ADMIN"] },
+      { href: "/dashboard/patients", label: "Patients",     icon: Users,        roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
+      { href: "/dashboard/booking",  label: "Booking",      icon: CalendarDays, roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
   {
     group: "VIEWS",
     items: [
-      { href: "/dashboard/doctor",        label: "Session View",  icon: Timer,        roles: ["ADMIN", "DOCTOR"] },
+      { href: "/dashboard/doctor",   label: "Session View", icon: Timer,        roles: ["ADMIN", "DOCTOR"] },
+    ],
+  },
+  {
+    group: "WORKFLOW",
+    items: [
+      { href: "/dashboard/holiday-requests", label: "Holiday Requests", icon: CalendarOff, roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
+      { href: "/dashboard/reassignments",    label: "Reassignments",    icon: UserCheck,   roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
     ],
   },
   {
     group: "SYSTEM",
     items: [
-      { href: "/dashboard/analytics",     label: "Analytics",     icon: BarChart3,    roles: ["ADMIN"] },
-      { href: "/dashboard/notifications", label: "Notifications", icon: Bell,         roles: ["ADMIN", "RECEPTIONIST"] },
+      { href: "/dashboard/analytics",     label: "Analytics",     icon: BarChart3, roles: ["ADMIN"] },
+      { href: "/dashboard/notifications", label: "Notifications", icon: Bell,      roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
   {
     group: "ACCOUNT",
     items: [
-      { href: "/dashboard/signup",          label: "Sign Up",        icon: UserPlus, roles: ["ADMIN"] },
-      { href: "/dashboard/reset-password",  label: "Reset Password", icon: KeyRound, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
+      { href: "/dashboard/signup",         label: "Sign Up",        icon: UserPlus, roles: ["ADMIN"] },
+      { href: "/dashboard/reset-password", label: "Reset Password", icon: KeyRound, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
     ],
   },
 ];
@@ -81,30 +89,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
 
   const role      = session?.user?.role ?? "";
-  const userId    = session?.user?.id ?? "";           // ← Important: get user id
+  const userId    = session?.user?.id ?? "";
   const userName  = session?.user?.name ?? "";
   const userEmail = session?.user?.email ?? "";
   const initials  = userName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
   const roleCfg   = ROLE_CONFIG[role];
 
-  // Dynamically build visible nav items with correct href for "My Profile"
   const visibleNav = NAV.map((group) => {
     const visibleItems = group.items
       .filter((item) => item.roles.includes(role))
       .map((item) => {
         if ("getHref" in item && typeof item.getHref === "function") {
-          return {
-            ...item,
-            href: item.getHref(userId),
-          };
+          return { ...item, href: item.getHref(userId) };
         }
-        return item as { href: string; label: string; icon: any };
+        return item as { href: string; label: string; icon: typeof LayoutGrid };
       });
-
-    return {
-      ...group,
-      items: visibleItems,
-    };
+    return { ...group, items: visibleItems };
   }).filter((group) => group.items.length > 0);
 
   return (
@@ -117,7 +117,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         className="w-60 shrink-0 h-screen flex flex-col relative overflow-hidden"
         style={{ background: "linear-gradient(160deg, #0a5c47 0%, #0d7a5f 45%, #0f8f6e 100%)" }}
       >
-        {/* Decorative background circles */}
+        {/* Decorative bg circles */}
         <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-32 -left-8 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute bottom-32 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
@@ -167,7 +167,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                           }
                         `}
                       >
-                        {/* Active left indicator */}
                         {isActive && (
                           <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full" />
                         )}
@@ -213,15 +212,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
 
-          {/* Sign out */}
           <SignOutButton />
         </div>
       </aside>
 
-      {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto">
-        {children}
-      </main>
+      {/* ══════════════════════════════
+          RIGHT SIDE: topbar + content
+      ══════════════════════════════ */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* ── Persistent top bar — always visible across every page ── */}
+        <header className="shrink-0 h-12 bg-white border-b border-slate-100 shadow-sm flex items-center justify-end px-5 z-40">
+          {/* The bell now opens its dropdown DOWNWARD into the page — fully visible */}
+          <NotificationBell />
+        </header>
+
+        {/* ── Scrollable page content ── */}
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+
+      </div>
     </div>
   );
 }

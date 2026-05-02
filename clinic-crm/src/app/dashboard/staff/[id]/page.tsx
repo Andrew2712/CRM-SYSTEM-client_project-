@@ -6,6 +6,7 @@ import { useParams }           from "next/navigation";
 import { useSession }          from "next-auth/react";
 import Link                    from "next/link";
 import dynamic                 from "next/dynamic";
+import EditProfileModal        from "@/components/EditProfileModal";
 
 // ── Lazy-load heavy components ─────────────────────────────────────────────
 const AnalyticsCharts = dynamic(() => import("@/components/staff/Analyticscharts"), {
@@ -127,6 +128,8 @@ function Avatar({ name, size = "lg" }: { name: string; size?: "sm" | "md" | "lg"
 }
 
 // ── InfoRow ────────────────────────────────────────────────────────────────
+// NOTE: EditProfileModal was incorrectly placed here before — it has been moved
+// into StaffProfilePage where all the required state variables are in scope.
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4 py-4 border-b border-slate-50 last:border-0">
@@ -168,6 +171,7 @@ export default function StaffProfilePage() {
   const [loading,      setLoading]      = useState(true);
   const [chartsReady,  setChartsReady]  = useState(false);
   const [error,        setError]        = useState("");
+  const [editOpen,     setEditOpen]     = useState(false);
 
   const viewerRole   = session?.user?.role as Role | undefined;
   const viewerId     = session?.user?.id   ?? "";
@@ -201,9 +205,9 @@ export default function StaffProfilePage() {
   }, [staffId, isAdmin]);
 
   // Derived appointment stats
-  const now         = new Date();
-  const totalSess   = appointments.length;
-  const missedSess  = appointments.filter((a) => a.status === "MISSED").length;
+  const now          = new Date();
+  const totalSess    = appointments.length;
+  const missedSess   = appointments.filter((a) => a.status === "MISSED").length;
   const upcomingSess = appointments.filter((a) => new Date(a.startTime) > now).length;
   const attendedSess = appointments.filter((a) => a.status === "ATTENDED").length;
 
@@ -268,6 +272,18 @@ export default function StaffProfilePage() {
               </svg>
               Back to Registry
             </Link>
+
+            {/* Edit Profile — ADMIN (any) or RECEPTIONIST (own only) */}
+            {(isAdmin || (viewerRole === "RECEPTIONIST" && isOwnProfile)) && (
+              <button
+                onClick={() => setEditOpen(true)}
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-3.5 py-2 text-xs font-bold shadow-sm transition-all">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit Profile
+              </button>
+            )}
 
             {/* Reset password — own profile OR admin */}
             {(isOwnProfile || isAdmin) && (
@@ -458,6 +474,26 @@ export default function StaffProfilePage() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* ── Edit Profile Modal — rendered here so all state is in scope ── */}
+        {editOpen && (
+          <EditProfileModal
+            type="staff"
+            entityId={profile.id}
+            initialData={{
+              name:  profile.name,
+              phone: profile.phone ?? "",
+              email: profile.email,
+            }}
+            userRole={viewerRole ?? ""}
+            onClose={() => setEditOpen(false)}
+            onSuccess={(data) => {
+              const updated = (data as { user?: StaffProfile }).user ?? data as StaffProfile;
+              setProfile((prev: StaffProfile | null) => prev ? { ...prev, ...updated } : prev);
+              setEditOpen(false);
+            }}
+          />
         )}
 
       </div>
