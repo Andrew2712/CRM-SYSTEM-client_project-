@@ -40,6 +40,7 @@ model Patient {
   phase                Phase?
   purposeOfVisit       String?
   totalSessionsPlanned Int            @default(0)
+  passwordHash         String?
   appointments         Appointment[]
   visits               PatientVisit[]
 }

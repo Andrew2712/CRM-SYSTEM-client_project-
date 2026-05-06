@@ -1,26 +1,143 @@
+/* ═══════════════════════════════════════════════════════════════
+   VYAYAMA PHYSIO — Global Styles & Tailwind v4 Theme
+   Tailwind v4 uses CSS-first config via @theme — NO tailwind.config.ts needed
+   ═══════════════════════════════════════════════════════════════ */
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ── Brand Token Layer ──────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* ─ Colors ─ */
+  --color-primary:        #5B1A0E;
+  --color-primary-dark:   #3A0F08;
+  --color-primary-light:  #7A2A1A;
+  --color-accent:         #D46A2E;
+  --color-accent-soft:    #F4A261;
+  --color-accent-muted:   #FAD5B2;
+  --color-background:     #F5F1E8;
+  --color-surface:        #FFFFFF;
+  --color-surface-alt:    #FBF8F3;
+  --color-border:         #E8E0D0;
+  --color-border-strong:  #C8B8A8;
+  --color-text-primary:   #2B1B17;
+  --color-text-secondary: #7A6A64;
+  --color-text-muted:     #A89990;
+  --color-success:        #2D7A4F;
+  --color-success-bg:     #EAF5EE;
+  --color-error:          #C0392B;
+  --color-error-bg:       #FCECEA;
+  --color-warning:        #B7650A;
+  --color-warning-bg:     #FEF3E2;
+
+  /* ─ Typography ─ */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), "Courier New", monospace;
+
+  /* ─ Radius ─ */
+  --radius-sm:  0.5rem;   /* 8px  */
+  --radius-md:  0.75rem;  /* 12px */
+  --radius-lg:  1rem;     /* 16px */
+  --radius-xl:  1.25rem;  /* 20px */
+  --radius-2xl: 1.5rem;   /* 24px */
+
+  /* ─ Shadows ─ */
+  --shadow-card: 0 1px 3px 0 rgb(91 26 14 / 0.06), 0 1px 2px -1px rgb(91 26 14 / 0.06);
+  --shadow-card-hover: 0 4px 12px 0 rgb(91 26 14 / 0.10), 0 2px 6px -1px rgb(91 26 14 / 0.08);
+  --shadow-sidebar: 2px 0 20px 0 rgb(58 15 8 / 0.12);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── CSS Custom Properties (for non-Tailwind usage) ─────────── */
+:root {
+  --primary:        #5B1A0E;
+  --primary-dark:   #3A0F08;
+  --accent:         #D46A2E;
+  --accent-soft:    #F4A261;
+  --background:     #F5F1E8;
+  --surface:        #FFFFFF;
+  --border:         #E8E0D0;
+  --text-primary:   #2B1B17;
+  --text-secondary: #7A6A64;
+}
+
+/* ── Base Reset ─────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--background);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar Styling ──────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #C8B8A8;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A89990;
+}
+
+/* ── Focus Ring ─────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #D46A2E;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Sidebar Transition (mobile slide) ─────────────────────── */
+.sidebar-enter {
+  transform: translateX(-100%);
+}
+.sidebar-enter-active {
+  transform: translateX(0);
+  transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar-exit {
+  transform: translateX(0);
+}
+.sidebar-exit-active {
+  transform: translateX(-100%);
+  transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Overlay Backdrop ───────────────────────────────────────── */
+.overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(43 27 23 / 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+  animation: fadeIn 200ms ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Utility: hide scrollbar (keep scroll functionality) ────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Print: hide sidebar ────────────────────────────────────── */
+@media print {
+  aside { display: none !important; }
+  main  { margin-left: 0 !important; }
 }

@@ -2,8 +2,18 @@
 
 /**
  * src/app/dashboard/layout.tsx
+ *
+ * VYAYAMA PHYSIO — Dashboard Layout
+ * ─────────────────────────────────
+ * ✅ Brand-colored sidebar (primary deep-brown gradient)
+ * ✅ Mobile: hidden by default, slide-in via hamburger
+ * ✅ Desktop: fixed 240px sidebar
+ * ✅ Overlay backdrop on mobile
+ * ✅ RBAC-filtered nav (same as original)
+ * ✅ Role badge, user info, sign-out
  */
 
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -22,11 +32,55 @@ import {
   UsersRound,
   CalendarOff,
   UserCheck,
+  Menu,
+  X,
+  Activity,
 } from "lucide-react";
+import type { ForwardRefExoticComponent, RefAttributes } from "react";
+import type { LucideProps } from "lucide-react";
 
-// ─── Nav structure ────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const NAV = [
+type LucideIcon = ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>;
+
+// Raw nav item — href OR getHref, but never both
+type StaticNavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  roles: string[];
+};
+
+type DynamicNavItem = {
+  getHref: (userId: string) => string;
+  label: string;
+  icon: LucideIcon;
+  roles: string[];
+};
+
+type RawNavItem = StaticNavItem | DynamicNavItem;
+
+// Resolved nav item — always has a concrete href
+type ResolvedNavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  roles: string[];
+};
+
+type NavGroup = {
+  group: string;
+  items: RawNavItem[];
+};
+
+type ResolvedNavGroup = {
+  group: string;
+  items: ResolvedNavItem[];
+};
+
+// ─── Nav Structure ────────────────────────────────────────────────────────────
+
+const NAV: NavGroup[] = [
   {
     group: "Profile",
     items: [
@@ -39,7 +93,7 @@ const NAV = [
     ],
   },
   {
-    group: "MAIN",
+    group: "Main",
     items: [
       { href: "/dashboard",          label: "Dashboard",    icon: LayoutGrid,   roles: ["ADMIN"] },
       { href: "/dashboard/staff",    label: "Staff",        icon: UsersRound,   roles: ["ADMIN"] },
@@ -48,27 +102,27 @@ const NAV = [
     ],
   },
   {
-    group: "VIEWS",
+    group: "Views",
     items: [
       { href: "/dashboard/doctor",   label: "Session View", icon: Timer,        roles: ["ADMIN", "DOCTOR"] },
     ],
   },
   {
-    group: "WORKFLOW",
+    group: "Workflow",
     items: [
       { href: "/dashboard/holiday-requests", label: "Holiday Requests", icon: CalendarOff, roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
       { href: "/dashboard/reassignments",    label: "Reassignments",    icon: UserCheck,   roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
     ],
   },
   {
-    group: "SYSTEM",
+    group: "System",
     items: [
       { href: "/dashboard/analytics",     label: "Analytics",     icon: BarChart3, roles: ["ADMIN"] },
       { href: "/dashboard/notifications", label: "Notifications", icon: Bell,      roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
   {
-    group: "ACCOUNT",
+    group: "Account",
     items: [
       { href: "/dashboard/signup",         label: "Sign Up",        icon: UserPlus, roles: ["ADMIN"] },
       { href: "/dashboard/reset-password", label: "Reset Password", icon: KeyRound, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
@@ -76,158 +130,326 @@ const NAV = [
   },
 ];
 
-const ROLE_CONFIG: Record<string, { label: string; badge: string }> = {
-  ADMIN:        { label: "Admin",        badge: "bg-white/20 text-white" },
-  DOCTOR:       { label: "Doctor",       badge: "bg-white/20 text-white" },
-  RECEPTIONIST: { label: "Receptionist", badge: "bg-white/20 text-white" },
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN:        "Admin",
+  DOCTOR:       "Doctor",
+  RECEPTIONIST: "Front Desk",
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Sidebar Inner Content ────────────────────────────────────────────────────
+
+function SidebarContent({
+  visibleNav,
+  pathname,
+  initials,
+  userName,
+  userEmail,
+  role,
+  onNavClick,
+}: {
+  visibleNav: ResolvedNavGroup[];
+  pathname: string;
+  initials: string;
+  userName: string;
+  userEmail: string;
+  role: string;
+  onNavClick?: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full">
+
+      {/* ── Logo ── */}
+      <div className="px-5 py-5 border-b border-white/10 flex-shrink-0">
+  <div className="flex items-center gap-3">
+    
+    {/* Logo */}
+    <div className="w-19 h-19 rounded-2xl overflow-hidden border border-[#5A1F14]/20 shadow-md bg-white flex items-center justify-center flex-shrink-0">
+      <img
+        src="/logo.png"
+        alt="Vyayama Logo"
+        className="w-full h-full object-cover"
+      />
+    </div>
+
+    {/* Text */}
+    <div>
+      <div>
+  <p className="text-2xl font-black text-[#EAE6DC] leading-tight tracking-tight">
+    Vyayama-Physio
+  </p>
+  <p className="text-sm text-[#EAE6DC]/70 leading-tight mt-1 font-medium">
+    Clinic management
+  </p>
+</div>
+    </div>
+
+  </div>
+</div>
+
+      {/* ── Navigation ── */}
+      <nav className="flex-1 overflow-y-auto px-3 py-5 space-y-5 no-scrollbar">
+        {visibleNav.map(({ group, items }) => (
+          <div key={group}>
+            <p className="text-[9px] font-black uppercase tracking-[0.18em] px-3 mb-2"
+              style={{ color: "rgba(255,255,255,0.30)" }}>
+              {group}
+            </p>
+            <ul className="space-y-0.5">
+              {items.map(({ label, href, icon: Icon }) => {
+                const isActive =
+                  href === "/dashboard"
+                    ? pathname === "/dashboard"
+                    : pathname === href || pathname.startsWith(href + "/");
+
+                return (
+                  <li key={href}>
+                    <Link
+                      href={href}
+                      onClick={onNavClick}
+                      className="group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150"
+                      style={{
+                        background: isActive ? "rgba(255,255,255,0.14)" : "transparent",
+                        color: isActive ? "#FFFFFF" : "rgba(255,255,255,0.58)",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) {
+                          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)";
+                          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.90)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          (e.currentTarget as HTMLElement).style.background = "transparent";
+                          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.58)";
+                        }
+                      }}
+                    >
+                      {isActive && (
+                        <span
+                          className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
+                          style={{ background: "#F4A261" }}
+                        />
+                      )}
+
+                      <Icon
+                        size={16}
+                        strokeWidth={isActive ? 2.4 : 1.9}
+                        style={{ color: isActive ? "#F4A261" : "rgba(255,255,255,0.45)" }}
+                      />
+
+                      <span className="flex-1">{label}</span>
+
+                      {isActive && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ background: "rgba(244,162,97,0.7)" }}
+                        />
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      {/* ── User Footer ── */}
+      <div className="flex-shrink-0 px-4 py-4 border-t" style={{ borderColor: "rgba(255,255,255,0.10)" }}>
+        <div
+          className="rounded-2xl p-3.5 mb-3"
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.10)",
+          }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0"
+              style={{
+                background: "rgba(212, 106, 46, 0.35)",
+                border: "1px solid rgba(212,106,46,0.40)",
+                color: "#F4A261",
+              }}
+            >
+              {initials}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-white truncate leading-tight">
+                {userName || "User"}
+              </p>
+              <p className="text-[10px] truncate leading-tight mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+                {userEmail || role}
+              </p>
+            </div>
+
+            {role && (
+              <span
+                className="text-[9px] font-black px-2 py-1 rounded-lg flex-shrink-0"
+                style={{
+                  background: "rgba(212,106,46,0.22)",
+                  color: "#F4A261",
+                  border: "1px solid rgba(212,106,46,0.30)",
+                }}
+              >
+                {ROLE_LABEL[role] ?? role}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <SignOutButton />
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard Layout ─────────────────────────────────────────────────────────
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [sidebarOpen]);
 
   const role      = session?.user?.role ?? "";
   const userId    = session?.user?.id ?? "";
   const userName  = session?.user?.name ?? "";
   const userEmail = session?.user?.email ?? "";
   const initials  = userName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
-  const roleCfg   = ROLE_CONFIG[role];
 
-  const visibleNav = NAV.map((group) => {
-    const visibleItems = group.items
+  // Resolve all nav items to concrete hrefs before passing to components.
+  // This eliminates the union type ambiguity that caused ts(2339).
+  const visibleNav: ResolvedNavGroup[] = NAV.map((group) => {
+    const visibleItems: ResolvedNavItem[] = group.items
       .filter((item) => item.roles.includes(role))
-      .map((item) => {
-        if ("getHref" in item && typeof item.getHref === "function") {
-          return { ...item, href: item.getHref(userId) };
+      .map((item): ResolvedNavItem => {
+        if ("getHref" in item) {
+          // DynamicNavItem — resolve href now using current userId
+          const { getHref, ...rest } = item;
+          return { ...rest, href: getHref(userId) };
         }
-        return item as { href: string; label: string; icon: typeof LayoutGrid };
+        // StaticNavItem — href already present
+        return item;
       });
     return { ...group, items: visibleItems };
   }).filter((group) => group.items.length > 0);
 
+  const sidebarProps = { visibleNav, pathname, initials, userName, userEmail, role };
+
+  const sidebarStyle = {
+    background: "linear-gradient(175deg, #5B1A0E 0%, #4A1509 40%, #3A0F08 100%)",
+    boxShadow: "2px 0 20px 0 rgba(58,15,8,0.18)",
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden" style={{ background: "#F5F1E8" }}>
 
-      {/* ══════════════════════════════
-          SIDEBAR
-      ══════════════════════════════ */}
+      {/* ════════════════════════════════
+          DESKTOP SIDEBAR (≥ lg)
+      ════════════════════════════════ */}
       <aside
-        className="w-60 shrink-0 h-screen flex flex-col relative overflow-hidden"
-        style={{ background: "linear-gradient(160deg, #0a5c47 0%, #0d7a5f 45%, #0f8f6e 100%)" }}
+        className="hidden lg:flex w-60 flex-shrink-0 h-screen sticky top-0 flex-col relative overflow-hidden"
+        style={sidebarStyle}
       >
-        {/* Decorative bg circles */}
-        <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
-        <div className="absolute top-32 -left-8 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
-        <div className="absolute bottom-32 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
-        <div className="absolute -bottom-8 -left-8 w-40 h-40 rounded-full bg-black/10 pointer-events-none" />
+        <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full pointer-events-none" style={{ background: "rgba(255,255,255,0.04)" }} />
+        <div className="absolute top-40 -left-8 w-28 h-28 rounded-full pointer-events-none" style={{ background: "rgba(255,255,255,0.04)" }} />
+        <div className="absolute -bottom-10 -right-6 w-36 h-36 rounded-full pointer-events-none" style={{ background: "rgba(0,0,0,0.08)" }} />
 
-        {/* ── Logo ── */}
-        <div className="relative px-5 py-5 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center shrink-0 shadow-md">
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <circle cx="9" cy="9" r="7" stroke="white" strokeOpacity="0.5" strokeWidth="1.5" />
-                <circle cx="9" cy="9" r="3.5" fill="white" fillOpacity="0.9" />
-                <path d="M9 2v2M9 14v2M2 9h2M14 9h2" stroke="white" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-extrabold text-white leading-tight tracking-tight">Vyayama</p>
-              <p className="text-[10px] text-white/50 leading-tight mt-0.5">Clinic management</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Navigation ── */}
-        <nav className="relative flex-1 overflow-y-auto px-3 py-5 space-y-6">
-          {visibleNav.map(({ group, items }) => (
-            <div key={group}>
-              <p className="text-[9px] font-black text-white/35 uppercase tracking-[0.15em] px-3 mb-2">
-                {group}
-              </p>
-              <ul className="space-y-1">
-                {items.map(({ label, href, icon: Icon }) => {
-                  const isActive =
-                    href === "/dashboard"
-                      ? pathname === "/dashboard"
-                      : pathname === href || pathname.startsWith(href + "/");
-
-                  return (
-                    <li key={href}>
-                      <Link
-                        href={href}
-                        className={`
-                          group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold
-                          transition-all duration-150 relative
-                          ${isActive
-                            ? "bg-white/15 text-white shadow-sm"
-                            : "text-white/60 hover:bg-white/10 hover:text-white"
-                          }
-                        `}
-                      >
-                        {isActive && (
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full" />
-                        )}
-                        <Icon
-                          size={16}
-                          strokeWidth={isActive ? 2.5 : 2}
-                          className={isActive ? "text-white" : "text-white/50 group-hover:text-white/80"}
-                        />
-                        {label}
-                        {isActive && (
-                          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60" />
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
-
-        {/* ── User footer ── */}
-        <div className="relative px-4 py-4 border-t border-white/10">
-          {/* User info card */}
-          <div className="bg-white/10 rounded-2xl p-3.5 mb-3 border border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white text-xs font-black shrink-0 border border-white/20">
-                {initials}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white truncate leading-tight">
-                  {userName || "User"}
-                </p>
-                <p className="text-[10px] text-white/50 truncate leading-tight mt-0.5">
-                  {userEmail || role}
-                </p>
-              </div>
-              {roleCfg && (
-                <span className={`text-[9px] font-black px-2 py-1 rounded-lg shrink-0 ${roleCfg.badge} border border-white/20`}>
-                  {roleCfg.label}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <SignOutButton />
-        </div>
+        <SidebarContent {...sidebarProps} />
       </aside>
 
-      {/* ══════════════════════════════
-          RIGHT SIDE: topbar + content
-      ══════════════════════════════ */}
+      {/* ════════════════════════════════
+          MOBILE OVERLAY BACKDROP
+      ════════════════════════════════ */}
+      {sidebarOpen && (
+        <div
+          className="overlay-backdrop lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ════════════════════════════════
+          MOBILE SIDEBAR (< lg)
+      ════════════════════════════════ */}
+      <aside
+        className={`
+          fixed top-0 left-0 z-50 h-full w-72 flex flex-col
+          lg:hidden overflow-hidden
+          transition-transform duration-300 ease-in-out
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+        style={sidebarStyle}
+        aria-label="Navigation sidebar"
+      >
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="absolute top-4 right-4 z-10 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+          style={{ background: "rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.70)" }}
+          aria-label="Close navigation"
+        >
+          <X size={16} />
+        </button>
+
+        <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full pointer-events-none" style={{ background: "rgba(255,255,255,0.04)" }} />
+        <div className="absolute -bottom-10 -right-6 w-36 h-36 rounded-full pointer-events-none" style={{ background: "rgba(0,0,0,0.08)" }} />
+
+        <SidebarContent
+          {...sidebarProps}
+          onNavClick={() => setSidebarOpen(false)}
+        />
+      </aside>
+
+      {/* ════════════════════════════════
+          MAIN CONTENT AREA
+      ════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* ── Persistent top bar — always visible across every page ── */}
-        <header className="shrink-0 h-12 bg-white border-b border-slate-100 shadow-sm flex items-center justify-end px-5 z-40">
-          {/* The bell now opens its dropdown DOWNWARD into the page — fully visible */}
-          <NotificationBell />
+        {/* ── Top Bar ── */}
+        <header
+          className="flex-shrink-0 h-14 flex items-center justify-between px-4 sm:px-6 z-30"
+          style={{
+            background: "#FFFFFF",
+            borderBottom: "1px solid #E8E0D0",
+            boxShadow: "0 1px 3px 0 rgba(91,26,14,0.06)",
+          }}
+        >
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+            style={{ color: "#5B1A0E" }}
+            aria-label="Open navigation"
+            aria-expanded={sidebarOpen}
+          >
+            <Menu size={20} />
+          </button>
+
+          <div className="lg:hidden flex items-center gap-2">
+            <span className="text-sm font-extrabold tracking-tight" style={{ color: "#5B1A0E" }}>
+              Vyayama Physio
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 ml-auto">
+            <NotificationBell />
+          </div>
         </header>
 
-        {/* ── Scrollable page content ── */}
+        {/* ── Scrollable Page Content ── */}
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>

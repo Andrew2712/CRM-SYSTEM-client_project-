@@ -12,8 +12,8 @@ const ROLE_REDIRECT: Record<string, string> = {
   RECEPTIONIST: "/dashboard/booking",
 };
 
-const inputCls = "w-full bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-400 transition-all";
-const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5";
+const inputCls = "w-full bg-[#F5F0E8] border border-[#D9CFC0] rounded-2xl px-4 py-3.5 text-sm font-medium text-[#3A2010] placeholder:text-[#A8998A] focus:outline-none focus:border-[#8B3A1E] focus:bg-[#FDF8F2] transition-all";
+const labelCls = "block text-[11px] font-bold text-[#7A6550] uppercase tracking-widest mb-1.5";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -117,7 +117,12 @@ export default function AuthPage() {
   );
 
   return (
-    <div className="min-h-screen flex overflow-hidden" style={{ background: "linear-gradient(135deg, #0a5c47 0%, #0d7a5f 50%, #0f8f6e 100%)" }}>
+    <div
+      className="min-h-screen flex overflow-hidden"
+      style={{
+        background: "linear-gradient(135deg, #3E1F14 0%, #5A1F14 50%, #7A2E1C 100%)"
+      }}
+    >
 
       {/* ── LEFT PANEL — Branding ── */}
       <div className="hidden lg:flex flex-col justify-between w-[52%] p-12 relative overflow-hidden">
@@ -130,16 +135,20 @@ export default function AuthPage() {
 
         {/* Logo */}
         <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center shadow-lg">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="8" stroke="white" strokeOpacity="0.4" strokeWidth="1.5" />
-              <circle cx="10" cy="10" r="3.5" fill="white" fillOpacity="0.9" />
-              <path d="M10 2v3M10 15v3M2 10h3M15 10h3" stroke="white" strokeOpacity="0.4" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+          <div className="w-20 h-20 rounded-2xl overflow-hidden border border-[#5A1F14]/20 shadow-lg bg-white">
+            <img
+              src="/logo.png"
+              alt="Vyayama Logo"
+              className="w-full h-full object-cover"
+            />
           </div>
           <div>
-            <p className="text-white font-extrabold text-lg leading-tight tracking-tight">Vyayama</p>
-            <p className="text-white/50 text-xs">Physio CRM</p>
+            <p className="text-2xl font-black text-[#EAE6DC] leading-tight tracking-tight">
+              Vyayama-Physio
+            </p>
+            <p className="text-sm text-[#EAE6DC]/70 leading-tight mt-1 font-medium">
+              Clinic management
+            </p>
           </div>
         </div>
 
@@ -156,57 +165,28 @@ export default function AuthPage() {
 
               {/* Physio human silhouette SVG */}
               <svg width="200" height="260" viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Head */}
                 <circle cx="100" cy="36" r="22" fill="white" fillOpacity="0.15" stroke="white" strokeOpacity="0.5" strokeWidth="2"/>
-
-                {/* Neck */}
                 <rect x="92" y="56" width="16" height="14" rx="6" fill="white" fillOpacity="0.12"/>
-
-                {/* Torso */}
                 <path d="M60 80 Q60 70 100 70 Q140 70 140 80 L145 145 Q145 155 100 158 Q55 155 55 145 Z"
                   fill="white" fillOpacity="0.1" stroke="white" strokeOpacity="0.3" strokeWidth="1.5"/>
-
-                {/* Spine line */}
                 <path d="M100 72 L100 155" stroke="white" strokeOpacity="0.25" strokeWidth="1.5" strokeDasharray="4 4"/>
-
-                {/* Left arm — raised/stretched (exercise pose) */}
                 <path d="M62 90 Q40 75 20 55" stroke="white" strokeOpacity="0.6" strokeWidth="3" strokeLinecap="round"/>
-                {/* Left hand */}
                 <circle cx="18" cy="53" r="6" fill="white" fillOpacity="0.2" stroke="white" strokeOpacity="0.5" strokeWidth="1.5"/>
-
-                {/* Right arm — raised/stretched */}
                 <path d="M138 90 Q160 75 180 55" stroke="white" strokeOpacity="0.6" strokeWidth="3" strokeLinecap="round"/>
-                {/* Right hand */}
                 <circle cx="182" cy="53" r="6" fill="white" fillOpacity="0.2" stroke="white" strokeOpacity="0.5" strokeWidth="1.5"/>
-
-                {/* Exercise band between hands */}
                 <path d="M24 53 Q100 20 176 53" stroke="white" strokeOpacity="0.35" strokeWidth="2.5" strokeDasharray="6 3"/>
-
-                {/* Left leg */}
                 <path d="M80 155 Q75 195 70 230" stroke="white" strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round"/>
-                {/* Left foot */}
                 <path d="M66 230 Q70 235 80 232" stroke="white" strokeOpacity="0.4" strokeWidth="2" strokeLinecap="round"/>
-
-                {/* Right leg */}
                 <path d="M120 155 Q125 195 130 230" stroke="white" strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round"/>
-                {/* Right foot */}
                 <path d="M134 230 Q130 235 120 232" stroke="white" strokeOpacity="0.4" strokeWidth="2" strokeLinecap="round"/>
-
-                {/* Joint dots */}
                 <circle cx="62" cy="90" r="4" fill="white" fillOpacity="0.4"/>
                 <circle cx="138" cy="90" r="4" fill="white" fillOpacity="0.4"/>
                 <circle cx="80" cy="155" r="4" fill="white" fillOpacity="0.4"/>
                 <circle cx="120" cy="155" r="4" fill="white" fillOpacity="0.4"/>
-
-                {/* Knee joints */}
                 <circle cx="73" cy="193" r="5" fill="white" fillOpacity="0.2" stroke="white" strokeOpacity="0.4" strokeWidth="1.5"/>
                 <circle cx="127" cy="193" r="5" fill="white" fillOpacity="0.2" stroke="white" strokeOpacity="0.4" strokeWidth="1.5"/>
-
-                {/* Shoulder joints */}
                 <circle cx="62" cy="85" r="6" fill="white" fillOpacity="0.15" stroke="white" strokeOpacity="0.4" strokeWidth="1.5"/>
                 <circle cx="138" cy="85" r="6" fill="white" fillOpacity="0.15" stroke="white" strokeOpacity="0.4" strokeWidth="1.5"/>
-
-                {/* Heart pulse line on torso */}
                 <path d="M72 112 L82 112 L87 100 L93 124 L99 108 L104 115 L110 115 L128 115"
                   stroke="white" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -249,15 +229,13 @@ export default function AuthPage() {
 
         {/* Bottom tagline */}
         <div className="relative">
-          <h2 className="text-3xl font-black text-white leading-tight tracking-tight mb-3">
+          <h2 className="text-3xl font-black text-[#EAE6DC] leading-tight tracking-tight mb-3">
             Smart Physio<br />
-            <span className="text-white/60">Management</span>
+            <span className="text-[#EAE6DC]/70">Management</span>
           </h2>
-          <p className="text-white/50 text-sm leading-relaxed max-w-xs">
+          <p className="text-[#EAE6DC]/60 text-sm leading-relaxed max-w-xs">
             Track patients, manage sessions, and monitor recovery — all in one place.
           </p>
-
-          {/* Feature pills */}
           <div className="flex flex-wrap gap-2 mt-5">
             {["Patient Tracking", "Phase Management", "Session Analytics", "Smart Booking"].map(f => (
               <span key={f} className="text-[10px] font-semibold text-white/70 bg-white/10 border border-white/15 px-3 py-1.5 rounded-full">
@@ -274,49 +252,55 @@ export default function AuthPage() {
 
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="white" strokeOpacity="0.4" strokeWidth="1.5" />
-                <circle cx="10" cy="10" r="3.5" fill="white" fillOpacity="0.9" />
-              </svg>
+            <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center overflow-hidden">
+              <img src="/logo.png" alt="Vyayama Logo" className="w-full h-full object-cover" />
             </div>
-            <p className="text-white font-extrabold text-lg">Vyayama Physio</p>
+            <p className="text-[#EAE6DC] font-extrabold text-lg">Vyayama Physio</p>
           </div>
 
-          {/* Card */}
-          <div className="bg-white rounded-3xl shadow-2xl shadow-black/20 overflow-hidden">
+          {/* ── BEIGE CARD ── */}
+          <div
+            className="rounded-3xl shadow-2xl shadow-black/20 overflow-hidden"
+            style={{ background: "#FDF8F2" }}
+          >
 
             {/* Card top gradient strip */}
-            <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg, #0a5c47, #0f8f6e, #14b8a6)" }} />
+            <div
+              className="h-1.5 w-full"
+              style={{
+                background: "linear-gradient(90deg, #3E1F14 0%, #5A1F14 40%, #C8A882 100%)"
+              }}
+            />
 
             <div className="p-8">
 
               {/* ── LOGIN VIEW ── */}
               {view === "login" && (
                 <>
-                  {/* Title — no tab switcher */}
                   <div className="mb-8">
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                    <h1 className="text-3xl font-black tracking-tight" style={{ color: "#2A1008" }}>
                       Welcome back
                     </h1>
-                    <p className="text-sm text-slate-400 mt-1 font-medium">
+                    <p className="text-sm mt-1 font-medium" style={{ color: "#8A7060" }}>
                       Sign in to your Vyayama account
                     </p>
                   </div>
 
                   {/* Error / success banners */}
                   {error && (
-                    <div className="mb-5 flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
+                    <div className="mb-5 flex items-center gap-3 p-4 rounded-2xl"
+                      style={{ background: "#FEF2F0", border: "1px solid #F5C4B3" }}>
                       <div className="w-6 h-6 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </div>
-                      <p className="text-sm font-semibold text-red-600">{error}</p>
+                      <p className="text-sm font-semibold text-red-700">{error}</p>
                     </div>
                   )}
                   {success && (
-                    <div className="mb-5 flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                    <div className="mb-5 flex items-center gap-3 p-4 rounded-2xl"
+                      style={{ background: "#F0FAF5", border: "1px solid #9FE1CB" }}>
                       <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
@@ -332,7 +316,7 @@ export default function AuthPage() {
                       <label className={labelCls}>Email address</label>
                       <div className="relative">
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                          <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
                         </div>
@@ -352,7 +336,7 @@ export default function AuthPage() {
                       <label className={labelCls}>Password</label>
                       <div className="relative">
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                          <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                           </svg>
                         </div>
@@ -367,7 +351,8 @@ export default function AuthPage() {
                         <button
                           type="button"
                           onClick={() => setShowLoginPwd(!showLoginPwd)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                          className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                          style={{ color: "#A8998A" }}
                         >
                           <EyeIcon show={showLoginPwd} />
                         </button>
@@ -379,62 +364,55 @@ export default function AuthPage() {
                       type="submit"
                       disabled={loading}
                       className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-4 rounded-2xl disabled:opacity-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 mt-2"
-                      style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}
+                      style={{ background: "linear-gradient(135deg, #3E1F14, #5A1F14, #8B3A1E)" }}
                     >
                       {loading ? (
                         <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> logging in…</>
                       ) : (
                         <>
-                          {/* Left arrow icon matching the image */}
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                          </svg>
                           login
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M13 5l7 7-7 7" />
+                          </svg>
                         </>
                       )}
                     </button>
 
                     {/* Forgot password link */}
-                    <p className="text-center text-sm text-slate-400 font-medium pt-1">
-                      Forgot your password? <b>Contact Admin...</b>{" "}
-                      {/* 
-                      <button
-                        type="button"
-                        onClick={() => { setView("forgot"); reset(); }}
-                        className="font-bold text-teal-600 hover:text-teal-700 hover:underline"
-                      >
-                        Contact Admin
-                      </button>*/}
+                    <p className="text-center text-sm font-medium pt-1" style={{ color: "#A8998A" }}>
+                      Forgot your password? <b style={{ color: "#5A1F14" }}>Contact Admin...</b>
                     </p>
                   </form>
-
-                  
                 </>
               )}
 
-              {/* ── SIGNUP & FORGOT views keep their tab switcher ── */}
+              {/* ── SIGNUP & FORGOT views ── */}
               {(view === "signup" || view === "forgot") && (
                 <>
-                  {/* Title */}
                   <div className="mb-7">
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                    <h1 className="text-2xl font-black tracking-tight" style={{ color: "#2A1008" }}>
                       {view === "signup" ? "Create account" : "Reset password"}
                     </h1>
-                    <p className="text-sm text-slate-400 mt-1 font-medium">
+                    <p className="text-sm mt-1 font-medium" style={{ color: "#8A7060" }}>
                       {view === "signup" ? "Set up a new staff account" : "Enter your email to reset access"}
                     </p>
                   </div>
 
-                  {/* Tab switcher (signup / forgot only) */}
-                  <div className="flex gap-1 mb-7 bg-slate-100 p-1 rounded-2xl">
+                  {/* Tab switcher */}
+                  <div className="flex gap-1 mb-7 p-1 rounded-2xl" style={{ background: "#EDE5D8" }}>
                     {(["login", "signup", "forgot"] as View[]).map(v => (
                       <button key={v} type="button"
                         onClick={() => { setView(v); reset(); }}
                         className={`flex-1 text-xs py-2.5 rounded-xl font-bold transition-all ${
                           view === v
-                            ? "bg-white text-slate-900 shadow-sm"
-                            : "text-slate-400 hover:text-slate-600"
-                        }`}>
+                            ? "shadow-sm"
+                            : ""
+                        }`}
+                        style={{
+                          background: view === v ? "#FDF8F2" : "transparent",
+                          color: view === v ? "#2A1008" : "#8A7060",
+                        }}
+                      >
                         {v === "forgot" ? "Reset" : v.charAt(0).toUpperCase() + v.slice(1)}
                       </button>
                     ))}
@@ -442,17 +420,19 @@ export default function AuthPage() {
 
                   {/* Banners */}
                   {error && (
-                    <div className="mb-5 flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
+                    <div className="mb-5 flex items-center gap-3 p-4 rounded-2xl"
+                      style={{ background: "#FEF2F0", border: "1px solid #F5C4B3" }}>
                       <div className="w-6 h-6 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </div>
-                      <p className="text-sm font-semibold text-red-600">{error}</p>
+                      <p className="text-sm font-semibold text-red-700">{error}</p>
                     </div>
                   )}
                   {success && (
-                    <div className="mb-5 flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                    <div className="mb-5 flex items-center gap-3 p-4 rounded-2xl"
+                      style={{ background: "#F0FAF5", border: "1px solid #9FE1CB" }}>
                       <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
@@ -469,7 +449,7 @@ export default function AuthPage() {
                         <label className={labelCls}>Full name</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                             </svg>
                           </div>
@@ -481,7 +461,7 @@ export default function AuthPage() {
                         <label className={labelCls}>Email address</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
                           </div>
@@ -493,7 +473,7 @@ export default function AuthPage() {
                         <label className={labelCls}>Password</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
                           </div>
@@ -501,7 +481,8 @@ export default function AuthPage() {
                             value={signupPassword} onChange={e => setSignupPassword(e.target.value)}
                             placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
                           <button type="button" onClick={() => setShowSignupPwd(!showSignupPwd)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                            style={{ color: "#A8998A" }}>
                             <EyeIcon show={showSignupPwd} />
                           </button>
                         </div>
@@ -516,11 +497,12 @@ export default function AuthPage() {
                           ].map(r => (
                             <button key={r.value} type="button"
                               onClick={() => setSignupRole(r.value)}
-                              className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-xs font-semibold transition-all ${
-                                signupRole === r.value
-                                  ? "border-teal-400 bg-teal-50 text-teal-700"
-                                  : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300"
-                              }`}>
+                              className="flex flex-col items-center gap-1 py-3 px-2 rounded-xl text-xs font-semibold transition-all"
+                              style={{
+                                border: signupRole === r.value ? "2px solid #8B3A1E" : "1px solid #D9CFC0",
+                                background: signupRole === r.value ? "#F5EBE0" : "#F0E9DE",
+                                color: signupRole === r.value ? "#5A1F14" : "#8A7060",
+                              }}>
                               <span className="text-base">{r.icon}</span>
                               {r.label}
                             </button>
@@ -529,7 +511,7 @@ export default function AuthPage() {
                       </div>
                       <button type="submit" disabled={loading}
                         className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:-translate-y-0.5"
-                        style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
+                        style={{ background: "linear-gradient(135deg, #3E1F14, #5A1F14, #8B3A1E)" }}>
                         {loading ? (
                           <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Creating account…</>
                         ) : "Create Account"}
@@ -544,7 +526,7 @@ export default function AuthPage() {
                         <label className={labelCls}>Registered email</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
                           </div>
@@ -556,7 +538,7 @@ export default function AuthPage() {
                         <label className={labelCls}>New password</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
                           </div>
@@ -564,7 +546,8 @@ export default function AuthPage() {
                             value={forgotPassword} onChange={e => setForgotPassword(e.target.value)}
                             placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
                           <button type="button" onClick={() => setShowForgotPwd(!showForgotPwd)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                            style={{ color: "#A8998A" }}>
                             <EyeIcon show={showForgotPwd} />
                           </button>
                         </div>
@@ -573,7 +556,7 @@ export default function AuthPage() {
                         <label className={labelCls}>Confirm new password</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                             </svg>
                           </div>
@@ -583,7 +566,7 @@ export default function AuthPage() {
                       </div>
                       <button type="submit" disabled={loading}
                         className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:-translate-y-0.5"
-                        style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}>
+                        style={{ background: "linear-gradient(135deg, #3E1F14, #5A1F14, #8B3A1E)" }}>
                         {loading ? (
                           <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Updating…</>
                         ) : "Update Password"}
