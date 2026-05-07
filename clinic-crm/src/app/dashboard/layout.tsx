@@ -450,7 +450,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* ── Scrollable Page Content ── */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto" style={{ background: "#F5F1E8" }}>
           {children}
         </main>
 

@@ -160,7 +160,7 @@ export default function AnalyticsPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/20 flex items-center justify-center">
+    <div className="min-h-screen bg-[#F5F1E8] flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
         <div className="w-10 h-10 border-[3px] border-teal-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-slate-400 font-medium">Loading analytics…</p>
@@ -169,7 +169,7 @@ export default function AnalyticsPage() {
   );
 
   if (!data) return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/20 flex items-center justify-center">
+    <div className="min-h-screen bg-[#F5F1E8] flex items-center justify-center">
       <p className="text-sm text-slate-400">Failed to load analytics data.</p>
     </div>
   );
@@ -196,7 +196,7 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/20 p-6">
+    <div className="min-h-screen bg-[#F5F1E8] p-6">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* ── Header ── */}

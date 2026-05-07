@@ -166,7 +166,7 @@ export default async function NotificationsPage() {
   const pendingCount = notifications.filter(n => n.status === "PENDING").length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/20 p-6">
+    <div className="min-h-screen bg-[#F5F1E8] p-6">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* ── Header ── */}

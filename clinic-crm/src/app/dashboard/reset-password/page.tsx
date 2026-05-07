@@ -149,7 +149,7 @@ export default function DashboardResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/20 p-6">
+    <div className="min-h-screen bg-[#F5F1E8] p-6">
       <div className="max-w-xl mx-auto">
 
         {/* ── Page header ── */}
