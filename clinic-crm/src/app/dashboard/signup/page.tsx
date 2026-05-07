@@ -3,15 +3,24 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-// ─── Shared style tokens (mirrors auth/login/page.tsx) ────────────────────────
+// ─── Brand tokens ─────────────────────────────────────────────────────────────
+const BRAND = {
+  primary: "#5B1A0E",
+  accent:  "#D46A2E",
+  green:   "#4F8A5B",
+  bg:      "#F5F1E8",
+  border:  "#E8E1D5",
+  card:    "#DDD2C2",
+  text:    "#2B1A14",
+  muted:   "#7A685F",
+};
 
 const inputCls =
-  "w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-400 transition-all";
+  "w-full bg-white border-2 border-[#DDD2C2] rounded-xl px-4 py-3 text-sm font-medium text-[#2B1A14] placeholder:text-[#7A685F] focus:outline-none focus:border-[#D46A2E] transition-all";
 const labelCls =
-  "block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5";
+  "block text-[11px] font-bold text-[#7A685F] uppercase tracking-widest mb-1.5";
 
-// ─── Inline eye icon ───────────────────────────────────────────────────────────
-
+// ─── Eye icon ─────────────────────────────────────────────────────────────────
 function EyeIcon({ show }: { show: boolean }) {
   return show ? (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -27,8 +36,7 @@ function EyeIcon({ show }: { show: boolean }) {
   );
 }
 
-// ─── Role card data ───────────────────────────────────────────────────────────
-
+// ─── Role cards ───────────────────────────────────────────────────────────────
 const ROLES = [
   {
     value: "DOCTOR",
@@ -40,8 +48,8 @@ const ROLES = [
           d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
       </svg>
     ),
-    activeClass: "border-teal-400 bg-teal-50 text-teal-700",
-    iconClass: "bg-teal-100 text-teal-600",
+    activeStyle:  { borderColor: BRAND.green,   background: BRAND.green + "12",   color: BRAND.green },
+    iconStyle:    { background: BRAND.green + "20", color: BRAND.green },
   },
   {
     value: "ADMIN",
@@ -54,8 +62,8 @@ const ROLES = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     ),
-    activeClass: "border-violet-400 bg-violet-50 text-violet-700",
-    iconClass: "bg-violet-100 text-violet-600",
+    activeStyle:  { borderColor: BRAND.primary, background: BRAND.primary + "12", color: BRAND.primary },
+    iconStyle:    { background: BRAND.primary + "20", color: BRAND.primary },
   },
   {
     value: "RECEPTIONIST",
@@ -67,13 +75,12 @@ const ROLES = [
           d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
     ),
-    activeClass: "border-amber-400 bg-amber-50 text-amber-700",
-    iconClass: "bg-amber-100 text-amber-600",
+    activeStyle:  { borderColor: BRAND.accent,  background: BRAND.accent + "12",  color: BRAND.accent },
+    iconStyle:    { background: BRAND.accent + "20",  color: BRAND.accent },
   },
 ] as const;
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function DashboardSignupPage() {
   const router = useRouter();
 
@@ -87,45 +94,27 @@ export default function DashboardSignupPage() {
   const [error,    setError]    = useState("");
   const [success,  setSuccess]  = useState("");
 
-  // ── Phone validation helper ────────────────────────────────────────────────
   function isValidPhone(val: string): boolean {
     return /^\+?[\d\s\-().]{7,20}$/.test(val.trim());
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    setSuccess("");
+    setError(""); setSuccess("");
 
-    // Client-side validation
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    if (!phone.trim()) {
-      setError("Phone number is required.");
-      return;
-    }
-    if (!isValidPhone(phone)) {
-      setError("Please enter a valid phone number (7–20 digits, optional + prefix).");
-      return;
-    }
+    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (!phone.trim())        { setError("Phone number is required."); return; }
+    if (!isValidPhone(phone)) { setError("Please enter a valid phone number (7–20 digits, optional + prefix)."); return; }
 
     setLoading(true);
-
     try {
-      const res = await fetch("/api/auth/signup", {
+      const res  = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password, role, phone: phone.trim() }),
       });
       const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? "Something went wrong. Please try again.");
-        return;
-      }
-
+      if (!res.ok) { setError(data.error ?? "Something went wrong. Please try again."); return; }
       setSuccess(`Account created for ${data.name}. Redirecting to dashboard…`);
       setName(""); setEmail(""); setPassword(""); setPhone("");
       setTimeout(() => router.push("/dashboard"), 2000);
@@ -139,44 +128,47 @@ export default function DashboardSignupPage() {
   const activeRole = ROLES.find((r) => r.value === role)!;
 
   return (
-    <div className="min-h-screen bg-[#F5F1E8] p-6">
+    <div className="min-h-screen p-4 sm:p-6" style={{ background: BRAND.bg }}>
       <div className="max-w-xl mx-auto">
 
-        {/* ── Page header ── */}
-        <div className="mb-8">
+        {/* ── Header ── */}
+        <div className="mb-6 sm:mb-8">
           <div className="flex items-center gap-2.5 mb-1">
-            <div className="w-8 h-8 bg-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-teal-200">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-md flex-shrink-0"
+              style={{ background: BRAND.primary }}>
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
               </svg>
             </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Create Account</h1>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: BRAND.primary }}>
+              Create Account
+            </h1>
           </div>
-          <p className="text-sm text-slate-400 ml-[42px]">
+          <p className="text-xs sm:text-sm ml-[42px]" style={{ color: BRAND.muted }}>
             Add a new staff member to the system
           </p>
         </div>
 
         {/* ── Card ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: BRAND.card }}>
+          <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${BRAND.primary}, ${BRAND.accent}, #D9A441)` }} />
 
-          {/* Card top gradient strip */}
-          <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg, #0a5c47, #0f8f6e, #14b8a6)" }} />
-
-          <div className="p-8">
+          <div className="p-5 sm:p-8">
 
             {/* Admin notice */}
-            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200/60 rounded-2xl mb-7">
-              <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div className="flex items-start gap-3 p-3 sm:p-4 rounded-2xl border mb-5 sm:mb-7"
+              style={{ background: BRAND.accent + "12", borderColor: BRAND.accent + "40" }}>
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: BRAND.accent }}>
                 <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                 </svg>
               </div>
               <div>
-                <p className="text-xs font-bold text-amber-800">Admin action</p>
-                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                <p className="text-xs font-bold" style={{ color: BRAND.primary }}>Admin action</p>
+                <p className="text-xs leading-relaxed mt-0.5" style={{ color: BRAND.text }}>
                   This creates a new staff account with immediate access. Only admins should perform this action.
                 </p>
               </div>
@@ -184,8 +176,8 @@ export default function DashboardSignupPage() {
 
             {/* Error banner */}
             {error && (
-              <div className="mb-6 flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
-                <div className="w-6 h-6 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="mb-5 flex items-start gap-3 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-2xl">
+                <div className="w-6 h-6 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                   <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -196,37 +188,30 @@ export default function DashboardSignupPage() {
 
             {/* Success banner */}
             {success && (
-              <div className="mb-6 flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="mb-5 flex items-start gap-3 p-3 sm:p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                   <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd" />
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
                 </div>
                 <p className="text-sm font-semibold text-emerald-700">{success}</p>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
 
               {/* Full name */}
               <div>
                 <label className={labelCls}>Full name</label>
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4" style={{ color: BRAND.muted }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
-                  <input
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Dr. John Smith"
-                    className={`${inputCls} pl-11`}
-                  />
+                  <input required value={name} onChange={(e) => setName(e.target.value)}
+                    placeholder="Dr. John Smith" className={`${inputCls} pl-11`} />
                 </div>
               </div>
 
@@ -235,45 +220,32 @@ export default function DashboardSignupPage() {
                 <label className={labelCls}>Email address</label>
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4" style={{ color: BRAND.muted }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                   </div>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="doctor@clinic.com"
-                    className={`${inputCls} pl-11`}
-                  />
+                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="doctor@clinic.com" className={`${inputCls} pl-11`} />
                 </div>
               </div>
 
-              {/* Phone number — NEW FIELD ────────────────────────────────── */}
+              {/* Phone */}
               <div>
                 <label className={labelCls}>
-                  Phone number
-                  <span className="ml-1.5 text-red-400">*</span>
+                  Phone number <span className="ml-1 text-red-400">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4" style={{ color: BRAND.muted }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                     </svg>
                   </div>
-                  <input
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 98765 43210"
-                    className={`${inputCls} pl-11`}
-                  />
+                  <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 98765 43210" className={`${inputCls} pl-11`} />
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1.5 ml-0.5">
+                <p className="text-[10px] mt-1.5 ml-0.5" style={{ color: BRAND.muted }}>
                   Include country code for international numbers (e.g. +91 for India)
                 </p>
               </div>
@@ -283,55 +255,41 @@ export default function DashboardSignupPage() {
                 <label className={labelCls}>Password</label>
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4" style={{ color: BRAND.muted }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
-                  <input
-                    type={showPwd ? "text" : "password"}
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Min. 6 characters"
-                    className={`${inputCls} pl-11 pr-12`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPwd(!showPwd)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
+                  <input type={showPwd ? "text" : "password"} required minLength={6}
+                    value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
+                  <button type="button" onClick={() => setShowPwd(!showPwd)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                    style={{ color: BRAND.muted }}>
                     <EyeIcon show={showPwd} />
                   </button>
                 </div>
               </div>
 
-              {/* Role selector — rich card style (unchanged) */}
+              {/* Role selector */}
               <div>
                 <label className={labelCls}>Role</label>
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
                   {ROLES.map((r) => {
                     const isActive = role === r.value;
                     return (
-                      <button
-                        key={r.value}
-                        type="button"
-                        onClick={() => setRole(r.value)}
-                        className={`flex flex-col items-center gap-2 py-4 px-3 rounded-xl border-2 text-xs font-semibold transition-all ${
-                          isActive
-                            ? r.activeClass
-                            : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                          isActive ? r.iconClass : "bg-slate-200 text-slate-500"
-                        }`}>
+                      <button key={r.value} type="button" onClick={() => setRole(r.value)}
+                        className="flex flex-col items-center gap-1.5 sm:gap-2 py-3 sm:py-4 px-2 sm:px-3 rounded-xl border-2 text-xs font-semibold transition-all"
+                        style={isActive
+                          ? r.activeStyle
+                          : { borderColor: BRAND.card, background: BRAND.bg, color: BRAND.muted }}>
+                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all"
+                          style={isActive ? r.iconStyle : { background: BRAND.border, color: BRAND.muted }}>
                           {r.icon}
                         </div>
                         <div className="text-center">
-                          <p className="font-bold">{r.label}</p>
-                          <p className={`text-[9px] font-medium mt-0.5 ${isActive ? "opacity-70" : "text-slate-400"}`}>
+                          <p className="font-bold text-[11px] sm:text-xs">{r.label}</p>
+                          <p className="text-[9px] sm:text-[10px] font-medium mt-0.5 opacity-70 hidden sm:block">
                             {r.description}
                           </p>
                         </div>
@@ -342,12 +300,9 @@ export default function DashboardSignupPage() {
               </div>
 
               {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading || !!success}
-                className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
-                style={{ background: "linear-gradient(135deg, #0a5c47, #0d7a5f)" }}
-              >
+              <button type="submit" disabled={loading || !!success}
+                className="w-full flex items-center justify-center gap-2 text-white text-sm font-bold py-3 sm:py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                style={{ background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.accent})` }}>
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -368,37 +323,22 @@ export default function DashboardSignupPage() {
         </div>
 
         {/* ── Role permissions reference ── */}
-        <div className="mt-5 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+        <div className="mt-4 sm:mt-5 bg-white rounded-2xl border shadow-sm p-4 sm:p-5" style={{ borderColor: BRAND.card }}>
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: BRAND.muted }}>
             Role permissions
           </p>
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {[
-              {
-                role: "Doctor",
-                icon: "🩺",
-                color: "text-teal-700 bg-teal-50 border-teal-200",
-                perms: ["View assigned patients", "Manage sessions", "Doctor dashboard"],
-              },
-              {
-                role: "Admin",
-                icon: "⚙️",
-                color: "text-violet-700 bg-violet-50 border-violet-200",
-                perms: ["Full system access", "Analytics & reports", "User management"],
-              },
-              {
-                role: "Receptionist",
-                icon: "📋",
-                color: "text-amber-700 bg-amber-50 border-amber-200",
-                perms: ["Booking management", "Patient check-in", "Notifications"],
-              },
+              { role: "Doctor",       icon: "🩺", color: BRAND.green,   perms: ["View assigned patients", "Manage sessions", "Doctor dashboard"] },
+              { role: "Admin",        icon: "⚙️", color: BRAND.primary, perms: ["Full system access", "Analytics & reports", "User management"] },
+              { role: "Receptionist", icon: "📋", color: BRAND.accent,  perms: ["Booking management", "Patient check-in", "Notifications"] },
             ].map(({ role: r, icon, color, perms }) => (
-              <div key={r} className="flex items-start gap-3">
-                <span className={`text-[10px] font-black px-2 py-1 rounded-lg border flex items-center gap-1 ${color}`}>
-                  <span>{icon}</span>
-                  <span>{r}</span>
+              <div key={r} className="flex items-start gap-2 sm:gap-3">
+                <span className="text-[10px] font-black px-2 py-1 rounded-lg border flex items-center gap-1 flex-shrink-0"
+                  style={{ color, background: color + "12", borderColor: color + "30" }}>
+                  <span>{icon}</span><span>{r}</span>
                 </span>
-                <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                <p className="text-xs font-medium leading-relaxed" style={{ color: BRAND.muted }}>
                   {perms.join(" · ")}
                 </p>
               </div>

@@ -4,7 +4,7 @@
 import React, { useMemo } from "react";
 import dynamic from "next/dynamic";
 
-// ── Lazy-load recharts so it never slows down other pages ──────────────────
+// ── Lazy-load recharts ─────────────────────────────────────────────────────
 const ResponsiveContainer = dynamic(
   () => import("recharts").then((m) => ({ default: m.ResponsiveContainer })),
   { ssr: false, loading: () => <ChartSkeleton /> }
@@ -18,9 +18,8 @@ const YAxis        = dynamic(() => import("recharts").then((m) => ({ default: m.
 const CartesianGrid = dynamic(() => import("recharts").then((m) => ({ default: m.CartesianGrid })), { ssr: false });
 const Tooltip      = dynamic(() => import("recharts").then((m) => ({ default: m.Tooltip })),      { ssr: false });
 const Legend       = dynamic(() => import("recharts").then((m) => ({ default: m.Legend })),       { ssr: false });
-const Cell         = dynamic(() => import("recharts").then((m) => ({ default: m.Cell })),         { ssr: false });
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
 export type AppointmentSlim = {
   id:        string;
   startTime: string;
@@ -30,15 +29,15 @@ export type AppointmentSlim = {
 type WeekPoint  = { day: string; sessions: number };
 type MonthPoint = { month: string; sessions: number; attended: number; missed: number };
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 const WEEK_DAYS  = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function buildWeekly(appts: AppointmentSlim[]): WeekPoint[] {
-  const now      = new Date();
-  const monday   = new Date(now);
+  const now    = new Date();
+  const monday = new Date(now);
   monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  monday.setHours(0,0,0,0);
+  monday.setHours(0, 0, 0, 0);
 
   const counts = Array(7).fill(0);
   appts.forEach((a) => {
@@ -52,7 +51,6 @@ function buildWeekly(appts: AppointmentSlim[]): WeekPoint[] {
 function buildMonthly(appts: AppointmentSlim[]): MonthPoint[] {
   const map: Record<string, { sessions: number; attended: number; missed: number }> = {};
 
-  // last 6 months
   for (let i = 5; i >= 0; i--) {
     const d  = new Date();
     d.setMonth(d.getMonth() - i);
@@ -73,31 +71,31 @@ function buildMonthly(appts: AppointmentSlim[]): MonthPoint[] {
   return Object.entries(map).map(([month, v]) => ({ month, ...v }));
 }
 
-// ── Skeleton ──────────────────────────────────────────────────────────────
+// ── Skeleton ───────────────────────────────────────────────────────────────
 function ChartSkeleton({ height = 220 }: { height?: number }) {
   return (
-    <div className="animate-pulse bg-slate-100 rounded-2xl w-full" style={{ height }} />
+    <div className="animate-pulse bg-[#F5F1E8] rounded-2xl w-full" style={{ height }} />
   );
 }
 
-// ── Custom tooltip ────────────────────────────────────────────────────────
+// ── Custom Tooltip ─────────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-xl p-3 text-xs">
-      <p className="font-bold text-slate-700 mb-1.5">{label}</p>
+    <div className="bg-white border border-[#DDD2C2] rounded-2xl shadow-xl p-3 text-xs">
+      <p className="font-bold text-[#2B1A14] mb-1.5">{label}</p>
       {payload.map((p: any, i: number) => (
         <div key={i} className="flex items-center gap-2 mb-1">
           <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-slate-500">{p.name}:</span>
-          <span className="font-bold text-slate-800">{p.value}</span>
+          <span className="text-[#7A685F]">{p.name}:</span>
+          <span className="font-bold text-[#2B1A14]">{p.value}</span>
         </div>
       ))}
     </div>
   );
 }
 
-// ── Main export ───────────────────────────────────────────────────────────
+// ── Main Export ────────────────────────────────────────────────────────────
 export default function AnalyticsCharts({
   appointments,
   chartsReady,
@@ -109,25 +107,29 @@ export default function AnalyticsCharts({
   const monthly = useMemo(() => buildMonthly(appointments), [appointments]);
 
   const axisProps = {
-    axisLine:  false as const,
-    tickLine:  false as const,
-    tick:      { fontSize: 11, fill: "#94a3b8", fontWeight: 600 },
+    axisLine: false as const,
+    tickLine: false as const,
+    tick:     { fontSize: 11, fill: "#7A685F", fontWeight: 600 },
   };
 
   return (
-    <div className="grid grid-cols-2 gap-5">
+    // ✅ FIXED: flex-col stacks both charts vertically on ALL screen sizes
+    <div className="flex flex-col gap-4 sm:gap-5">
 
       {/* ── Weekly trend (Line) ── */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
-          <h3 className="text-sm font-bold text-slate-900">Weekly Session Trend</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Sessions this week — Mon to Sun</p>
+      <div className="bg-white rounded-2xl border border-[#DDD2C2] shadow-sm overflow-hidden">
+        <div
+          className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E8E1D5]"
+          style={{ background: "linear-gradient(to right, #F5F1E8, white)" }}
+        >
+          <h3 className="text-sm font-bold text-[#2B1A14]">Weekly Session Trend</h3>
+          <p className="text-xs text-[#7A685F] mt-0.5">Sessions this week — Mon to Sun</p>
         </div>
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {!chartsReady ? <ChartSkeleton height={200} /> : (
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={weekly} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E8E1D5" />
                 <XAxis dataKey="day" {...axisProps} />
                 <YAxis {...axisProps} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} />
@@ -135,9 +137,9 @@ export default function AnalyticsCharts({
                   type="monotone"
                   dataKey="sessions"
                   name="Sessions"
-                  stroke="#0d7a5f"
+                  stroke="#4F8A5B"
                   strokeWidth={3}
-                  dot={{ r: 4, fill: "#0d7a5f", strokeWidth: 2, stroke: "#fff" }}
+                  dot={{ r: 4, fill: "#4F8A5B", strokeWidth: 2, stroke: "#fff" }}
                   activeDot={{ r: 6 }}
                 />
               </LineChart>
@@ -147,27 +149,31 @@ export default function AnalyticsCharts({
       </div>
 
       {/* ── Monthly trend (Bar) ── */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
-          <h3 className="text-sm font-bold text-slate-900">Monthly Session Trend</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Attended vs Missed — last 6 months</p>
+      <div className="bg-white rounded-2xl border border-[#DDD2C2] shadow-sm overflow-hidden">
+        <div
+          className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E8E1D5]"
+          style={{ background: "linear-gradient(to right, #F5F1E8, white)" }}
+        >
+          <h3 className="text-sm font-bold text-[#2B1A14]">Monthly Session Trend</h3>
+          <p className="text-xs text-[#7A685F] mt-0.5">Attended vs Missed — last 6 months</p>
         </div>
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {!chartsReady ? <ChartSkeleton height={200} /> : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={monthly} margin={{ top: 5, right: 10, left: -20, bottom: 5 }} barCategoryGap="30%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E8E1D5" vertical={false} />
                 <XAxis dataKey="month" {...axisProps} />
                 <YAxis {...axisProps} allowDecimals={false} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
-                <Legend wrapperStyle={{ fontSize: 12, fontWeight: 600 }} />
-                <Bar dataKey="attended" name="Attended" fill="#10b981" radius={[4,4,0,0]} />
-                <Bar dataKey="missed"   name="Missed"   fill="#ef4444" radius={[4,4,0,0]} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: "#F5F1E8" }} />
+                <Legend wrapperStyle={{ fontSize: 12, fontWeight: 600, color: "#7A685F" }} />
+                <Bar dataKey="attended" name="Attended" fill="#4F8A5B" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="missed"   name="Missed"   fill="#C94F4F" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
       </div>
+
     </div>
   );
 }
