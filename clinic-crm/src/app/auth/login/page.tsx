@@ -10,6 +10,7 @@ const ROLE_REDIRECT: Record<string, string> = {
   ADMIN:        "/dashboard",
   DOCTOR:       "/dashboard/doctor",
   RECEPTIONIST: "/dashboard/booking",
+  PATIENT:      "/patient/dashboard",
 };
 
 const inputCls = "w-full bg-[#F5F0E8] border border-[#D9CFC0] rounded-2xl px-4 py-3.5 text-sm font-medium text-[#3A2010] placeholder:text-[#A8998A] focus:outline-none focus:border-[#8B3A1E] focus:bg-[#FDF8F2] transition-all";

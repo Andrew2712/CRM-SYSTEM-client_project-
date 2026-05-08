@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { Gender, Phase, PatientStatus } from "@prisma/client";
 import { requireAuth, getPatientFilter } from "@/lib/rbac";
 import { fetchPatientsWithActivity } from "@/lib/patientActivity";
+import bcrypt from "bcryptjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ✅ Helper: collision-safe patient code generator
@@ -128,6 +129,14 @@ export async function POST(req: NextRequest) {
       try {
         const patientCode = await generatePatientCode();
 
+        // ── Auto-generate patient login credentials ──────────────────────
+        // Username: patient email (if provided)
+        // Password: FirstName_YYYY-MM-DD  (using today's registration date)
+        const registrationDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const firstName = (body.name as string).trim().split(/\s+/)[0];
+        const rawPassword = `${firstName}_${registrationDate}`;
+        const passwordHash = await bcrypt.hash(rawPassword, 10);
+
         const patient = await prisma.patient.create({
           data: {
             patientCode,
@@ -145,10 +154,19 @@ export async function POST(req: NextRequest) {
             totalSessionsPlanned: body.totalSessionsPlanned
               ? parseInt(body.totalSessionsPlanned as string, 10)
               : 0,
+            passwordHash: body.email ? passwordHash : null,
           },
         });
 
-        return NextResponse.json(patient, { status: 201 });
+        return NextResponse.json(
+          {
+            ...patient,
+            _credentials: body.email
+              ? { username: body.email, defaultPassword: rawPassword }
+              : null,
+          },
+          { status: 201 }
+        );
       } catch (err: unknown) {
         const prismaErr = err as { code?: string };
 

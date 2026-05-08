@@ -193,6 +193,7 @@ export default function PatientsPage() {
   const [patientSuccess,  setPatientSuccess]  = useState("");
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const [deleting,      setDeleting]      = useState(false);
+  const [credentialsModal, setCredentialsModal] = useState<{ username: string; defaultPassword: string } | null>(null);
 
   async function loadPatients() {
     setLoading(true);
@@ -246,6 +247,9 @@ export default function PatientsPage() {
       const data = await res.json();
       if (res.ok) {
         setPatientSuccess(`Patient registered! ID: ${data.patientCode}`);
+        if (data._credentials) {
+          setCredentialsModal(data._credentials);
+        }
         setShowPatientForm(false);
         setPatientForm(BLANK_PATIENT);
         loadPatients(); loadAllPatients();
@@ -561,6 +565,49 @@ export default function PatientsPage() {
           </>
         )}
       </div>
+
+      {/* ── Patient Credentials Modal ── */}
+      {credentialsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-[#E8E1D5]">
+            <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg, #3E1F14 0%, #5A1F14 40%, #C8A882 100%)" }} />
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-xl flex-shrink-0">🔐</div>
+                <div>
+                  <h3 className="font-black text-[#2B1A14] text-lg">Patient Login Created</h3>
+                  <p className="text-xs text-[#7A685F]">Share these credentials with the patient</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <div className="bg-[#F5F1E8] rounded-xl p-4">
+                  <p className="text-[10px] font-bold text-[#7A685F] uppercase tracking-wider mb-1">Username (Email)</p>
+                  <p className="text-sm font-mono font-semibold text-[#2B1A14] select-all">{credentialsModal.username}</p>
+                </div>
+                <div className="bg-[#F5F1E8] rounded-xl p-4">
+                  <p className="text-[10px] font-bold text-[#7A685F] uppercase tracking-wider mb-1">Default Password</p>
+                  <p className="text-sm font-mono font-semibold text-[#2B1A14] select-all">{credentialsModal.defaultPassword}</p>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
+                <p className="text-xs text-amber-800 font-medium">
+                  ⚠️ Please share this password securely. The patient should reset it after first login from their portal.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setCredentialsModal(null)}
+                className="w-full py-3 rounded-xl text-sm font-bold text-white transition-all"
+                style={{ background: "linear-gradient(135deg, #3E1F14, #5A1F14, #8B3A1E)" }}
+              >
+                Got it, Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
