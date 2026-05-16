@@ -14,48 +14,63 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        console.log("=== AUTH DEBUG ===");
+        console.log("Email:", credentials?.email);
+        console.log("Password length:", credentials?.password?.length);
 
-        // ── 1. Check staff (User) table first ──────────────────────────────
-        const staffUser = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
-
-        if (staffUser) {
-          const valid = await bcrypt.compare(
-            credentials.password,
-            staffUser.passwordHash
-          );
-          if (!valid) return null;
-          return {
-            id: staffUser.id,
-            name: staffUser.name,
-            email: staffUser.email,
-            role: staffUser.role as string,
-          };
+        if (!credentials?.email || !credentials?.password) {
+          console.log("FAIL: missing credentials");
+          return null;
         }
 
-        // ── 2. Check patient table ──────────────────────────────────────────
-        const patient = await prisma.patient.findFirst({
-          where: { email: credentials.email },
-        });
+        try {
+          const staffUser = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          });
 
-        if (!patient) return null;
-        if (!patient.passwordHash) return null;
+          console.log("Staff found:", !!staffUser);
 
-        const valid = await bcrypt.compare(
-          credentials.password,
-          patient.passwordHash
-        );
-        if (!valid) return null;
+          if (staffUser) {
+            console.log("Hash:", staffUser.passwordHash?.slice(0, 20));
+            const valid = await bcrypt.compare(
+              credentials.password,
+              staffUser.passwordHash
+            );
+            console.log("Password valid:", valid);
+            if (!valid) return null;
+            return {
+              id: staffUser.id,
+              name: staffUser.name,
+              email: staffUser.email,
+              role: staffUser.role as string,
+            };
+          }
 
-        return {
-          id: patient.id,
-          name: patient.name,
-          email: patient.email ?? "",
-          role: "PATIENT",
-          patientId: patient.id,
-        };
+          const patient = await prisma.patient.findFirst({
+            where: { email: credentials.email },
+          });
+
+          console.log("Patient found:", !!patient);
+          if (!patient || !patient.passwordHash) return null;
+
+          const valid = await bcrypt.compare(
+            credentials.password,
+            patient.passwordHash
+          );
+          console.log("Patient password valid:", valid);
+          if (!valid) return null;
+
+          return {
+            id: patient.id,
+            name: patient.name,
+            email: patient.email ?? "",
+            role: "PATIENT",
+            patientId: patient.id,
+          };
+        } catch (err) {
+          console.error("AUTH EXCEPTION:", err);
+          return null;
+        }
       },
     }),
   ],

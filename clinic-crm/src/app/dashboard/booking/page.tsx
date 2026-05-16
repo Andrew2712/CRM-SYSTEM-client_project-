@@ -40,7 +40,20 @@ const SESSION_TYPES = [
   { value: "SPECIALIZED",        label: "Specialized" },
 ];
 
-const TIMES = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
+// Quick-pick slots shown as chips
+const QUICK_SLOTS = [
+  "08:00","09:00","10:00","11:00","12:00",
+  "13:00","14:00","15:00","16:00","17:00","18:00",
+  "19:00","20:00","21:00",  
+];
+
+// Helpers to pad numbers
+const pad = (n: number) => String(n).padStart(2, "0");
+
+// Build HH:MM string from hour + minute
+function buildTime(hour: number, minute: number) {
+  return `${pad(hour)}:${pad(minute)}`;
+}
 
 function suggestNextDate(phase: string): string {
   const today = new Date();
@@ -63,6 +76,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
 
 const inputCls = "w-full bg-[#FAF8F2] border-2 border-[#4A0F06]/12 rounded-xl px-4 py-3 text-sm font-medium text-[#4A0F06] placeholder:text-[#4A0F06]/30 focus:outline-none focus:ring-0 focus:border-[#D86F32]/50 transition-all";
 const labelCls = "block text-[11px] font-bold text-[#4A0F06]/50 uppercase tracking-widest mb-1.5";
+const spinnerCls = "w-full bg-[#FAF8F2] border-2 border-[#4A0F06]/12 rounded-xl px-3 py-3 text-sm font-mono font-bold text-[#4A0F06] text-center focus:outline-none focus:ring-0 focus:border-[#D86F32]/50 transition-all appearance-none";
 
 export default function BookingPage() {
   const { data: session } = useSession();
@@ -83,11 +97,23 @@ export default function BookingPage() {
   const [rescheduleAppt, setRescheduleAppt]   = useState<Appointment | null>(null);
   const [reassignAppt, setReassignAppt]       = useState<Appointment | null>(null);
 
+  // Time stored as 12-hour + minute + am/pm
+  const [timeHour, setTimeHour]     = useState(9);   // 1–12
+  const [timeMinute, setTimeMinute] = useState(0);
+  const [timeAmPm, setTimeAmPm]     = useState<"AM" | "PM">("AM");
+
   const [form, setForm] = useState({
     patientId: "", doctorId: "",
     sessionType: "INITIAL_ASSESSMENT",
     date: "", time: "09:00",
   });
+
+  // Convert 12h → 24h for API, keep form.time in sync
+  useEffect(() => {
+    let h24 = timeHour % 12;
+    if (timeAmPm === "PM") h24 += 12;
+    setForm(f => ({ ...f, time: buildTime(h24, timeMinute) }));
+  }, [timeHour, timeMinute, timeAmPm]);
 
   useEffect(() => {
     fetch("/api/doctors",{credentials:"include"}).then(r=>r.json()).then(d=>setDoctors(Array.isArray(d)?d:[])).catch(()=>{});
@@ -108,13 +134,22 @@ export default function BookingPage() {
     setSelectedPatient(null); setPatientSearch(""); setForm(f => ({...f, patientId: ""}));
   }
 
+  // When a quick-slot chip is clicked, sync hour/minute/ampm state
+  function handleQuickSlot(slot: string) {
+    const [h24, m] = slot.split(":").map(Number);
+    const ampm: "AM" | "PM" = h24 < 12 ? "AM" : "PM";
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    setTimeAmPm(ampm);
+    setTimeHour(h12);
+    setTimeMinute(m);
+  }
+
   async function handleBook(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess("");
     const [year, month, day] = form.date.split("-").map(Number);
-    const [hour, minute]     = form.time.split(":").map(Number);
-    const startLocal = new Date(year, month-1, day, hour, minute, 0);
-    const endLocal   = new Date(year, month-1, day, hour+1, minute, 0);
+    const startLocal = new Date(year, month-1, day, timeHour, timeMinute, 0);
+    const endLocal   = new Date(year, month-1, day, timeHour + 1, timeMinute, 0);
     const res = await fetch("/api/appointments", {
       method: "POST", headers: {"Content-Type":"application/json"}, credentials: "include",
       body: JSON.stringify({...form, startTime: startLocal.toISOString(), endTime: endLocal.toISOString()}),
@@ -124,6 +159,7 @@ export default function BookingPage() {
     if (res.ok) {
       setSuccess(`Booking confirmed for ${selectedPatient?.name ?? "patient"}!`);
       setForm({patientId:"",doctorId:"",sessionType:"INITIAL_ASSESSMENT",date:"",time:"09:00"});
+      setTimeHour(9); setTimeMinute(0); setTimeAmPm("AM");
       clearPatient(); loadUpcoming();
       setTimeout(() => setSuccess(""), 5000);
     } else { setError(data.error ?? "Booking failed. Please try again."); }
@@ -148,6 +184,8 @@ export default function BookingPage() {
   const confirmedCount = upcoming.filter(a => a.status === "CONFIRMED").length;
   const attendedCount  = upcoming.filter(a => a.status === "ATTENDED").length;
   const missedCount    = upcoming.filter(a => a.status === "MISSED").length;
+
+  const currentTimeStr = `${pad(timeHour)}:${pad(timeMinute)} ${timeAmPm}`;
 
   return (
     <div className="min-h-screen bg-[#F5F2E8] p-4 sm:p-6">
@@ -180,7 +218,7 @@ export default function BookingPage() {
         </div>
       </div>
 
-      {/* Main layout — stacks on mobile, side-by-side on lg+ */}
+      {/* Main layout */}
       <div className="flex flex-col lg:grid lg:grid-cols-[480px_1fr] gap-5 sm:gap-6 items-start">
 
         {/* LEFT — Booking form */}
@@ -290,29 +328,114 @@ export default function BookingPage() {
                 </div>
               </div>
 
-              {/* Date + Time */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Date <span className="text-[#D86F32]">*</span></label>
-                  <div className="relative">
-                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                    </div>
-                    <input required type="date" value={form.date} min={todayStr} onChange={e => setForm({...form, date: e.target.value})} className={`${inputCls} pl-10`}/>
+              {/* Date */}
+              <div>
+                <label className={labelCls}>Date <span className="text-[#D86F32]">*</span></label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                   </div>
+                  <input required type="date" value={form.date} min={todayStr} onChange={e => setForm({...form, date: e.target.value})} className={`${inputCls} pl-10`}/>
                 </div>
-                <div>
-                  <label className={labelCls}>Time (IST) <span className="text-[#D86F32]">*</span></label>
-                  <div className="relative">
-                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+
+              {/* ── Time picker (IST) ── */}
+              <div>
+                <label className={labelCls}>Time (IST) <span className="text-[#D86F32]">*</span></label>
+
+                {/* Quick-pick slot chips */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {QUICK_SLOTS.map(slot => {
+                    const [slotH24] = slot.split(":").map(Number);
+                    const slotAmPm = slotH24 < 12 ? "AM" : "PM";
+                    const slotH12  = slotH24 % 12 === 0 ? 12 : slotH24 % 12;
+                    const active = timeHour === slotH12 && timeMinute === 0 && timeAmPm === slotAmPm;
+                    return (
+                      <button key={slot} type="button" onClick={() => handleQuickSlot(slot)}
+                        className={`text-xs font-mono font-semibold px-2.5 py-1.5 rounded-lg border-2 transition-all ${
+                          active
+                            ? "bg-[#4A0F06] border-[#4A0F06] text-[#F5F2E8] shadow-sm shadow-[#4A0F06]/20"
+                            : "bg-[#FAF8F2] border-[#4A0F06]/12 text-[#4A0F06]/60 hover:border-[#D86F32]/40 hover:text-[#D86F32]"
+                        }`}>
+                        {slot}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom hour : minute spinner */}
+                <div className="flex items-center gap-2">
+                  {/* Hour spinner — 1 to 12 */}
+                  <div className="flex-1 flex flex-col items-center gap-1">
+                    <button type="button"
+                      onClick={() => setTimeHour(h => (h % 12) + 1)}
+                      className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/></svg>
+                    </button>
+                    <input
+                      type="number" min={1} max={12}
+                      value={timeHour}
+                      onChange={e => {
+                        const v = Math.max(1, Math.min(12, Number(e.target.value)));
+                        setTimeHour(isNaN(v) ? 1 : v);
+                      }}
+                      className={spinnerCls}
+                    />
+                    <button type="button"
+                      onClick={() => setTimeHour(h => h === 1 ? 12 : h - 1)}
+                      className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">Hour</span>
+                  </div>
+
+                  {/* Colon separator */}
+                  <div className="text-2xl font-black text-[#4A0F06]/30 mb-5 select-none">:</div>
+
+                  {/* Minute spinner — steps of 5 */}
+                  <div className="flex-1 flex flex-col items-center gap-1">
+                    <button type="button"
+                      onClick={() => setTimeMinute(m => (m + 5) % 60)}
+                      className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/></svg>
+                    </button>
+                    <input
+                      type="number" min={0} max={59} step={5}
+                      value={timeMinute}
+                      onChange={e => {
+                        const v = Math.max(0, Math.min(59, Number(e.target.value)));
+                        setTimeMinute(isNaN(v) ? 0 : v);
+                      }}
+                      className={spinnerCls}
+                    />
+                    <button type="button"
+                      onClick={() => setTimeMinute(m => (m - 5 + 60) % 60)}
+                      className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">Min</span>
+                  </div>
+
+                  {/* AM / PM toggle */}
+                  <div className="flex flex-col items-center gap-1.5 mb-5">
+                    {(["AM", "PM"] as const).map(period => (
+                      <button key={period} type="button"
+                        onClick={() => setTimeAmPm(period)}
+                        className={`w-12 py-2 rounded-xl border-2 text-xs font-black tracking-wider transition-all ${
+                          timeAmPm === period
+                            ? "bg-[#4A0F06] border-[#4A0F06] text-[#F5F2E8] shadow-sm shadow-[#4A0F06]/20"
+                            : "bg-[#FAF8F2] border-[#4A0F06]/12 text-[#4A0F06]/40 hover:border-[#D86F32]/40 hover:text-[#D86F32]"
+                        }`}>
+                        {period}
+                      </button>
+                    ))}
+                    <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">Period</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1 mb-5 ml-1">
+                    <div className="px-3 py-2 bg-[#4A0F06] rounded-xl shadow-md shadow-[#4A0F06]/20">
+                      <span className="text-base font-black font-mono text-[#F5F2E8] tracking-tight">{currentTimeStr}</span>
                     </div>
-                    <select required value={form.time} onChange={e => setForm({...form, time: e.target.value})} className={`${inputCls} pl-10 appearance-none`}>
-                      {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
-                    </div>
+                    <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">IST</span>
                   </div>
                 </div>
               </div>
