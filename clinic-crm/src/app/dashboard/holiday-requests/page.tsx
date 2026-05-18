@@ -6,7 +6,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { CalendarOff, Check, X, RefreshCw, Clock } from "lucide-react";
+import { CalendarOff, Check, X, RefreshCw } from "lucide-react";
+import HolidayRequestForm from "@/components/HolidayRequestForm";
 
 interface HolidayRequest {
   id: string;
@@ -91,16 +92,26 @@ export default function HolidayRequestsPage() {
     <div className="min-h-screen bg-[#F5F1E8] p-4 sm:p-6">
       <div className="max-w-5xl mx-auto space-y-5 sm:space-y-6">
 
-        {/* ── Header ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5 mb-1">
-              <div className="w-8 h-8 bg-[#4B0F05] rounded-xl flex items-center justify-center shadow-md shadow-[#4B0F05]/20">
-                <CalendarOff size={15} className="text-[#F5F1E8]" />
-              </div>
-              <h1 className="text-xl sm:text-2xl font-black text-[#2B1A14] tracking-tight">Holiday Requests</h1>
+        {/* ── Page title ── */}
+        <div>
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="w-8 h-8 bg-[#4B0F05] rounded-xl flex items-center justify-center shadow-md shadow-[#4B0F05]/20">
+              <CalendarOff size={15} className="text-[#F5F1E8]" />
             </div>
-            <p className="text-xs sm:text-sm text-[#7A685F] ml-[42px]">Manage doctor leave requests</p>
+            <h1 className="text-xl sm:text-2xl font-black text-[#2B1A14] tracking-tight">Holiday Requests</h1>
+          </div>
+          <p className="text-xs sm:text-sm text-[#7A685F] ml-[42px]">Manage doctor leave requests</p>
+        </div>
+
+        <HolidayRequestForm />
+
+        {/* ── Requests Log header ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-[#4B0F05] rounded-xl flex items-center justify-center shadow-md shadow-[#4B0F05]/20">
+              <CalendarOff size={15} className="text-[#F5F1E8]" />
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-[#2B1A14] tracking-tight">Requests Log</h2>
           </div>
           <button
             onClick={fetchRequests}
@@ -114,10 +125,10 @@ export default function HolidayRequestsPage() {
         {/* ── Summary chips ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {([
-            { key: "ALL",      label: "All",      color: "text-[#2B1A14]",  bg: "bg-[#E8E1D5]",         activeBg: "bg-[#4B0F05]",   activeText: "text-[#F5F1E8]", activeBorder: "border-[#4B0F05]" },
-            { key: "PENDING",  label: "Pending",  color: "text-[#8B6419]",  bg: "bg-[#D9A441]/10",      activeBg: "bg-[#D9A441]",   activeText: "text-white",     activeBorder: "border-[#D9A441]" },
-            { key: "APPROVED", label: "Approved", color: "text-[#4F8A5B]",  bg: "bg-[#4F8A5B]/10",      activeBg: "bg-[#4F8A5B]",   activeText: "text-white",     activeBorder: "border-[#4F8A5B]" },
-            { key: "REJECTED", label: "Rejected", color: "text-[#C94F4F]",  bg: "bg-[#C94F4F]/10",      activeBg: "bg-[#C94F4F]",   activeText: "text-white",     activeBorder: "border-[#C94F4F]" },
+            { key: "ALL",      label: "All",      color: "text-[#2B1A14]", activeBg: "bg-[#4B0F05]",   activeText: "text-[#F5F1E8]", activeBorder: "border-[#4B0F05]" },
+            { key: "PENDING",  label: "Pending",  color: "text-[#8B6419]", activeBg: "bg-[#D9A441]",   activeText: "text-white",     activeBorder: "border-[#D9A441]" },
+            { key: "APPROVED", label: "Approved", color: "text-[#4F8A5B]", activeBg: "bg-[#4F8A5B]",   activeText: "text-white",     activeBorder: "border-[#4F8A5B]" },
+            { key: "REJECTED", label: "Rejected", color: "text-[#C94F4F]", activeBg: "bg-[#C94F4F]",   activeText: "text-white",     activeBorder: "border-[#C94F4F]" },
           ] as const).map(s => (
             <button
               key={s.key}
@@ -125,13 +136,11 @@ export default function HolidayRequestsPage() {
               className={`flex items-center justify-between px-3 sm:px-4 py-3 rounded-2xl border-2 transition-all duration-150 text-left ${
                 filter === s.key
                   ? `${s.activeBg} ${s.activeText} ${s.activeBorder} shadow-sm`
-                  : `bg-white border-[#DDD2C2] hover:border-[#D97332]/40`
+                  : "bg-white border-[#DDD2C2] hover:border-[#D97332]/40"
               }`}
             >
               <span className={`text-xs font-semibold ${filter === s.key ? s.activeText : s.color}`}>{s.label}</span>
-              <span className={`text-lg font-black ${filter === s.key ? s.activeText : s.color}`}>
-                {counts[s.key]}
-              </span>
+              <span className={`text-lg font-black ${filter === s.key ? s.activeText : s.color}`}>{counts[s.key]}</span>
             </button>
           ))}
         </div>
@@ -174,85 +183,101 @@ export default function HolidayRequestsPage() {
             </div>
           ) : (
             <>
-              {/* Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[#E8E1D5] bg-[#F5F1E8]/80">
-                      {["Doctor", "Date", "Reason", "Status", "Submitted", ...(canManage ? ["Actions"] : [])].map(h => (
-                        <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold text-[#7A685F] uppercase tracking-widest">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F5F1E8]">
-                    {filtered.map((r, idx) => {
-                      const st = STATUS_STYLES[r.status];
-                      return (
-                        <tr key={r.id} className={`transition-colors duration-150 hover:bg-[#FDF3EC]/50 ${idx % 2 === 0 ? "bg-white" : "bg-[#F5F1E8]/20"}`}>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-2.5">
-                              <DoctorAvatar name={r.doctor.name} />
-                              <div>
-                                <p className="font-bold text-[#2B1A14] text-sm">{r.doctor.name}</p>
-                                <p className="text-xs text-[#7A685F] font-mono">{r.doctor.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <p className="text-sm font-semibold text-[#2B1A14]">
-                              {new Date(r.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                            </p>
-                          </td>
-                          <td className="px-5 py-4">
-                            <p className="text-sm text-[#5C1408] max-w-[200px] truncate">{r.reason}</p>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${st.pill}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-                              {r.status === "PENDING" ? "Pending" : r.status === "APPROVED" ? "Approved" : "Rejected"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4 text-xs text-[#7A685F]">
-                            {new Date(r.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                          </td>
-                          {canManage && (
-                            <td className="px-5 py-4">
-                              {r.status === "PENDING" ? (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => updateStatus(r.id, "APPROVED")}
-                                    disabled={acting === r.id}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#4F8A5B] hover:bg-[#3d6e47] text-white disabled:opacity-50 transition-all duration-150 shadow-sm"
-                                  >
-                                    <Check size={11} /> Approve
-                                  </button>
-                                  <button
-                                    onClick={() => updateStatus(r.id, "REJECTED")}
-                                    disabled={acting === r.id}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-[#C94F4F]/8 text-[#C94F4F] border-2 border-[#C94F4F]/30 hover:border-[#C94F4F]/50 disabled:opacity-50 transition-all duration-150"
-                                  >
-                                    <X size={11} /> Reject
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-xs text-[#7A685F]/50 italic">Done</span>
-                              )}
-                            </td>
-                          )}
+              {/* Desktop table — scrollable at 520px max height (~8 rows) */}
+              <div className="hidden md:block">
+                <div className="overflow-x-auto">
+                  {/* Sticky thead + scrollable tbody */}
+                  <div className="max-h-[520px] overflow-y-auto
+                    [&::-webkit-scrollbar]:w-1.5
+                    [&::-webkit-scrollbar-track]:bg-[#F5F1E8]
+                    [&::-webkit-scrollbar-track]:rounded-full
+                    [&::-webkit-scrollbar-thumb]:bg-[#DDD2C2]
+                    [&::-webkit-scrollbar-thumb]:rounded-full
+                    hover:[&::-webkit-scrollbar-thumb]:bg-[#D97332]">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 z-10">
+                        <tr className="border-b border-[#E8E1D5] bg-[#F5F1E8]">
+                          {["Doctor", "Date", "Reason", "Status", "Submitted", ...(canManage ? ["Actions"] : [])].map(h => (
+                            <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold text-[#7A685F] uppercase tracking-widest whitespace-nowrap">{h}</th>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#F5F1E8]">
+                        {filtered.map((r, idx) => {
+                          const st = STATUS_STYLES[r.status];
+                          return (
+                            <tr key={r.id} className={`transition-colors duration-150 hover:bg-[#FDF3EC]/50 ${idx % 2 === 0 ? "bg-white" : "bg-[#F5F1E8]/20"}`}>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-2.5">
+                                  <DoctorAvatar name={r.doctor.name} />
+                                  <div>
+                                    <p className="font-bold text-[#2B1A14] text-sm">{r.doctor.name}</p>
+                                    <p className="text-xs text-[#7A685F] font-mono">{r.doctor.email}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-4 whitespace-nowrap">
+                                <p className="text-sm font-semibold text-[#2B1A14]">
+                                  {new Date(r.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                </p>
+                              </td>
+                              <td className="px-5 py-4">
+                                <p className="text-sm text-[#5C1408] max-w-[200px] truncate">{r.reason}</p>
+                              </td>
+                              <td className="px-5 py-4">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${st.pill}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                                  {r.status === "PENDING" ? "Pending" : r.status === "APPROVED" ? "Approved" : "Rejected"}
+                                </span>
+                              </td>
+                              <td className="px-5 py-4 text-xs text-[#7A685F] whitespace-nowrap">
+                                {new Date(r.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                              </td>
+                              {canManage && (
+                                <td className="px-5 py-4">
+                                  {r.status === "PENDING" ? (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => updateStatus(r.id, "APPROVED")}
+                                        disabled={acting === r.id}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#4F8A5B] hover:bg-[#3d6e47] text-white disabled:opacity-50 transition-all duration-150 shadow-sm"
+                                      >
+                                        <Check size={11} /> Approve
+                                      </button>
+                                      <button
+                                        onClick={() => updateStatus(r.id, "REJECTED")}
+                                        disabled={acting === r.id}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-[#C94F4F]/8 text-[#C94F4F] border-2 border-[#C94F4F]/30 hover:border-[#C94F4F]/50 disabled:opacity-50 transition-all duration-150"
+                                      >
+                                        <X size={11} /> Reject
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-[#7A685F]/50 italic">Done</span>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
 
-              {/* Mobile / tablet cards */}
-              <div className="md:hidden divide-y divide-[#E8E1D5]">
+              {/* Mobile / tablet cards — scrollable at 520px max height */}
+              <div className="md:hidden max-h-[520px] overflow-y-auto divide-y divide-[#E8E1D5]
+                [&::-webkit-scrollbar]:w-1.5
+                [&::-webkit-scrollbar-track]:bg-[#F5F1E8]
+                [&::-webkit-scrollbar-track]:rounded-full
+                [&::-webkit-scrollbar-thumb]:bg-[#DDD2C2]
+                [&::-webkit-scrollbar-thumb]:rounded-full
+                hover:[&::-webkit-scrollbar-thumb]:bg-[#D97332]">
                 {filtered.map(r => {
                   const st = STATUS_STYLES[r.status];
                   return (
                     <div key={r.id} className="p-4 hover:bg-[#FDF3EC]/40 transition-colors duration-150">
-                      {/* Top row */}
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <DoctorAvatar name={r.doctor.name} />
@@ -267,7 +292,6 @@ export default function HolidayRequestsPage() {
                         </span>
                       </div>
 
-                      {/* Details */}
                       <div className="space-y-2 mb-3">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-bold text-[#7A685F] uppercase tracking-wider w-16 flex-shrink-0">Date</span>
@@ -287,7 +311,6 @@ export default function HolidayRequestsPage() {
                         </div>
                       </div>
 
-                      {/* Action buttons */}
                       {canManage && r.status === "PENDING" && (
                         <div className="flex gap-2 pt-2 border-t border-[#E8E1D5]">
                           <button

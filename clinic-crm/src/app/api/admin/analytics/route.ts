@@ -1,4 +1,11 @@
 // src/app/api/admin/analytics/route.ts
+//
+// FIX: `total` previously counted every appointment including CANCELLED
+// (and RESCHEDULED duplicates). We now report:
+//   total      = ATTENDED + MISSED + CONFIRMED + RESCHEDULED  (real activity)
+//   cancelled  = separately
+// Monthly trend also excludes CANCELLED.
+
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -9,19 +16,25 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const [total, newPatients, returning, missed, attended, confirmed, sessionTypes] = await Promise.all([
-    prisma.appointment.count(),
+  const [newPatients, returning, missed, attended, confirmed, rescheduled, cancelled, sessionTypes] = await Promise.all([
     prisma.patient.count({ where: { status: "NEW" } }),
     prisma.patient.count({ where: { status: "RETURNING" } }),
     prisma.appointment.count({ where: { status: "MISSED" } }),
     prisma.appointment.count({ where: { status: "ATTENDED" } }),
     prisma.appointment.count({ where: { status: "CONFIRMED" } }),
-    prisma.appointment.groupBy({ by: ["sessionType"], _count: { sessionType: true } }),
+    prisma.appointment.count({ where: { status: "RESCHEDULED" } }),
+    prisma.appointment.count({ where: { status: "CANCELLED" } }),
+    prisma.appointment.groupBy({
+      by: ["sessionType"],
+      _count: { sessionType: true },
+      where: { status: { not: "CANCELLED" } },
+    }),
   ]);
 
+  const total = attended + missed + confirmed + rescheduled;       // excludes cancelled
   const totalPatients = newPatients + returning;
 
-  // ── Monthly trend (last 6 months) ──────────────────────────────────────────
+  // ── Monthly trend (last 6 months) — excludes CANCELLED ───────────────────
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
   sixMonthsAgo.setDate(1);
@@ -29,7 +42,7 @@ export async function GET() {
 
   const [allAppointments, allPatients] = await Promise.all([
     prisma.appointment.findMany({
-      where: { startTime: { gte: sixMonthsAgo } },
+      where: { startTime: { gte: sixMonthsAgo }, status: { not: "CANCELLED" } },
       select: { startTime: true, status: true },
     }),
     prisma.patient.findMany({
@@ -38,7 +51,6 @@ export async function GET() {
     }),
   ]);
 
-  // Build month buckets
   const monthMap: Record<string, { total: number; newPatients: number; returning: number }> = {};
   for (let i = 5; i >= 0; i--) {
     const d = new Date();
@@ -61,12 +73,11 @@ export async function GET() {
 
   const monthlyTrend = Object.entries(monthMap).map(([month, v]) => ({ month, ...v }));
 
-  // ── Gender distribution with patient lists ──────────────────────────────────
+  // ── Gender distribution ───────────────────────────────────────────────────
   const genderGroups = await prisma.patient.groupBy({
     by: ["gender"],
     _count: { gender: true },
   });
-
   const genderDistribution = await Promise.all(
     genderGroups.map(async g => {
       const patients = await prisma.patient.findMany({
@@ -74,42 +85,33 @@ export async function GET() {
         select: { id: true, name: true, patientCode: true, status: true, age: true },
         take: 50,
       });
-      return {
-        gender: g.gender ?? "OTHER",
-        count: g._count.gender,
-        patients,
-      };
-    })
+      return { gender: g.gender ?? "OTHER", count: g._count.gender, patients };
+    }),
   );
 
-  // ── Phase distribution ─────────────────────────────────────────────────────
+  // ── Phase distribution ────────────────────────────────────────────────────
   const phaseGroups = await prisma.patient.groupBy({
     by: ["phase"],
     _count: { phase: true },
     where: { phase: { not: null } },
   });
-
   const phaseDistribution = await Promise.all(
     phaseGroups.map(async p => {
-      // Average sessions attended per patient in this phase
       const patientsInPhase = await prisma.patient.findMany({
         where: { phase: p.phase },
-        include: { _count: { select: { appointments: true } } },
+        include: {
+          _count: { select: { appointments: { where: { status: { not: "CANCELLED" } } } } },
+        },
       });
       const avgSessions = patientsInPhase.length > 0
         ? Math.round(patientsInPhase.reduce((sum, pt) => sum + pt._count.appointments, 0) / patientsInPhase.length)
         : 0;
-
-      return {
-        phase: p.phase ?? "UNASSIGNED",
-        count: p._count.phase,
-        avgSessions,
-      };
-    })
+      return { phase: p.phase ?? "UNASSIGNED", count: p._count.phase, avgSessions };
+    }),
   );
 
   return NextResponse.json({
-    total, newPatients, returning, missed, attended, confirmed,
+    total, newPatients, returning, missed, attended, confirmed, rescheduled, cancelled,
     totalPatients, sessionTypes,
     monthlyTrend, genderDistribution, phaseDistribution,
   });

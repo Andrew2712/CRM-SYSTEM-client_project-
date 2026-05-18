@@ -40,19 +40,21 @@ const SESSION_TYPES = [
   { value: "SPECIALIZED",        label: "Specialized" },
 ];
 
-// Quick-pick slots shown as chips
 const QUICK_SLOTS = [
   "08:00","09:00","10:00","11:00","12:00",
   "13:00","14:00","15:00","16:00","17:00","18:00",
-  "19:00","20:00","21:00",  
+  "19:00","20:00","21:00",
 ];
 
-// Helpers to pad numbers
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// Build HH:MM string from hour + minute
-function buildTime(hour: number, minute: number) {
-  return `${pad(hour)}:${pad(minute)}`;
+// ── THE FIX: always derive 24h from 12h + ampm ────────────────────────────────
+// This is the single source of truth used in handleBook.
+// Never pass timeHour (12h) directly to new Date() — always call this first.
+function to24h(hour12: number, ampm: "AM" | "PM"): number {
+  // 12 AM → 0, 1-11 AM → 1-11, 12 PM → 12, 1-11 PM → 13-23
+  if (ampm === "AM") return hour12 === 12 ? 0 : hour12;
+  return hour12 === 12 ? 12 : hour12 + 12;
 }
 
 function suggestNextDate(phase: string): string {
@@ -90,30 +92,23 @@ export default function BookingPage() {
   const [showDropdown, setShowDropdown]       = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [upcomingFilter, setUpcomingFilter]   = useState("ALL");
-  const [saving, setSaving]     = useState(false);
-  const [success, setSuccess]   = useState("");
-  const [error, setError]       = useState("");
+  const [saving, setSaving]                   = useState(false);
+  const [success, setSuccess]                 = useState("");
+  const [error, setError]                     = useState("");
   const [cancelling, setCancelling]           = useState<string | null>(null);
   const [rescheduleAppt, setRescheduleAppt]   = useState<Appointment | null>(null);
   const [reassignAppt, setReassignAppt]       = useState<Appointment | null>(null);
 
-  // Time stored as 12-hour + minute + am/pm
-  const [timeHour, setTimeHour]     = useState(9);   // 1–12
+  // 12-hour UI state
+  const [timeHour, setTimeHour]     = useState(9);    // 1–12
   const [timeMinute, setTimeMinute] = useState(0);
   const [timeAmPm, setTimeAmPm]     = useState<"AM" | "PM">("AM");
 
   const [form, setForm] = useState({
     patientId: "", doctorId: "",
     sessionType: "INITIAL_ASSESSMENT",
-    date: "", time: "09:00",
+    date: "",
   });
-
-  // Convert 12h → 24h for API, keep form.time in sync
-  useEffect(() => {
-    let h24 = timeHour % 12;
-    if (timeAmPm === "PM") h24 += 12;
-    setForm(f => ({ ...f, time: buildTime(h24, timeMinute) }));
-  }, [timeHour, timeMinute, timeAmPm]);
 
   useEffect(() => {
     fetch("/api/doctors",{credentials:"include"}).then(r=>r.json()).then(d=>setDoctors(Array.isArray(d)?d:[])).catch(()=>{});
@@ -134,7 +129,6 @@ export default function BookingPage() {
     setSelectedPatient(null); setPatientSearch(""); setForm(f => ({...f, patientId: ""}));
   }
 
-  // When a quick-slot chip is clicked, sync hour/minute/ampm state
   function handleQuickSlot(slot: string) {
     const [h24, m] = slot.split(":").map(Number);
     const ampm: "AM" | "PM" = h24 < 12 ? "AM" : "PM";
@@ -147,22 +141,39 @@ export default function BookingPage() {
   async function handleBook(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess("");
+
+    // ── THE FIX ──────────────────────────────────────────────────────────────
+    // Convert 12h + AM/PM → 24h BEFORE constructing the Date.
+    // Old code: new Date(year, month-1, day, timeHour, ...)
+    //   → timeHour is 5 for "5 PM", but Date() treats it as 5 AM. ❌
+    // New code: to24h(timeHour, timeAmPm) returns 17 for "5 PM". ✅
+    const h24 = to24h(timeHour, timeAmPm);
     const [year, month, day] = form.date.split("-").map(Number);
-    const startLocal = new Date(year, month-1, day, timeHour, timeMinute, 0);
-    const endLocal   = new Date(year, month-1, day, timeHour + 1, timeMinute, 0);
+
+    // new Date(y, m, d, h, min) uses LOCAL time → toISOString() = correct UTC
+    const startLocal = new Date(year, month - 1, day, h24, timeMinute, 0, 0);
+    const endLocal   = new Date(year, month - 1, day, h24 + 1, timeMinute, 0, 0);
+    // ─────────────────────────────────────────────────────────────────────────
+
     const res = await fetch("/api/appointments", {
       method: "POST", headers: {"Content-Type":"application/json"}, credentials: "include",
-      body: JSON.stringify({...form, startTime: startLocal.toISOString(), endTime: endLocal.toISOString()}),
+      body: JSON.stringify({
+        ...form,
+        startTime: startLocal.toISOString(),
+        endTime:   endLocal.toISOString(),
+      }),
     });
     const data = await res.json();
     setSaving(false);
     if (res.ok) {
       setSuccess(`Booking confirmed for ${selectedPatient?.name ?? "patient"}!`);
-      setForm({patientId:"",doctorId:"",sessionType:"INITIAL_ASSESSMENT",date:"",time:"09:00"});
+      setForm({patientId:"",doctorId:"",sessionType:"INITIAL_ASSESSMENT",date:""});
       setTimeHour(9); setTimeMinute(0); setTimeAmPm("AM");
       clearPatient(); loadUpcoming();
       setTimeout(() => setSuccess(""), 5000);
-    } else { setError(data.error ?? "Booking failed. Please try again."); }
+    } else {
+      setError(data.error ?? "Booking failed. Please try again.");
+    }
   }
 
   async function handleCancel(apptId: string) {
@@ -175,27 +186,38 @@ export default function BookingPage() {
   }
 
   const filteredPatients = patientSearch.length > 1
-    ? patients.filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()) || p.patientCode.toLowerCase().includes(patientSearch.toLowerCase()))
+    ? patients.filter(p =>
+        p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
+        p.patientCode.toLowerCase().includes(patientSearch.toLowerCase())
+      )
     : patients.slice(0, 6);
 
-  const filteredUpcoming = upcomingFilter === "ALL" ? upcoming : upcoming.filter(a => a.status === upcomingFilter);
+  const filteredUpcoming = upcomingFilter === "ALL"
+    ? upcoming
+    : upcoming.filter(a => a.status === upcomingFilter);
 
-  const todayStr       = new Date().toISOString().split("T")[0];
-  const confirmedCount = upcoming.filter(a => a.status === "CONFIRMED").length;
-  const attendedCount  = upcoming.filter(a => a.status === "ATTENDED").length;
-  const missedCount    = upcoming.filter(a => a.status === "MISSED").length;
+  const todayStr         = new Date().toISOString().split("T")[0];
+  const confirmedCount   = upcoming.filter(a => a.status === "CONFIRMED").length;
+  const rescheduledCount = upcoming.filter(a => a.status === "RESCHEDULED").length;
+  const attendedCount    = upcoming.filter(a => a.status === "ATTENDED").length;
+  const missedCount      = upcoming.filter(a => a.status === "MISSED").length;
+  const cancelledCount   = upcoming.filter(a => a.status === "CANCELLED").length;
 
+  // Derived display string — also uses to24h for accuracy
+  const h24Preview    = to24h(timeHour, timeAmPm);
   const currentTimeStr = `${pad(timeHour)}:${pad(timeMinute)} ${timeAmPm}`;
 
   return (
     <div className="min-h-screen bg-[#F5F2E8] p-4 sm:p-6">
 
-      {/* Page header */}
+      {/* ── Page header ── */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-7">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
             <div className="w-8 h-8 bg-[#4A0F06] rounded-xl flex items-center justify-center shadow-md shadow-[#4A0F06]/20">
-              <svg className="w-4 h-4 text-[#F5F2E8]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              <svg className="w-4 h-4 text-[#F5F2E8]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-[#4A0F06] tracking-tight">Booking Engine</h1>
           </div>
@@ -205,26 +227,32 @@ export default function BookingPage() {
         {/* Status filter chips */}
         <div className="flex items-center gap-2 flex-wrap">
           {[
-            { label: "Confirmed", value: confirmedCount, color: "text-sky-700",     bg: "bg-sky-50 border-sky-200",         dot: "bg-sky-500",     filter: "CONFIRMED" },
-            { label: "Attended",  value: attendedCount,  color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-500", filter: "ATTENDED" },
-            { label: "Missed",    value: missedCount,    color: "text-red-600",     bg: "bg-red-50 border-red-200",         dot: "bg-red-500",     filter: "MISSED" },
+            { label: "Confirmed",   value: confirmedCount,   color: "text-sky-700",     bg: "bg-sky-50 border-sky-200",         dot: "bg-sky-500",     filter: "CONFIRMED" },
+            { label: "Rescheduled", value: rescheduledCount, color: "text-amber-700",   bg: "bg-amber-50 border-amber-200",     dot: "bg-amber-500",   filter: "RESCHEDULED" },
+            { label: "Attended",    value: attendedCount,    color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-500", filter: "ATTENDED" },
+            { label: "Missed",      value: missedCount,      color: "text-red-600",     bg: "bg-red-50 border-red-200",         dot: "bg-red-500",     filter: "MISSED" },
+            { label: "Cancelled",   value: cancelledCount,   color: "text-gray-600",    bg: "bg-gray-100 border-gray-200",      dot: "bg-gray-400",    filter: "CANCELLED" },
           ].map(s => (
             <button key={s.label}
               onClick={() => setUpcomingFilter(upcomingFilter === s.filter ? "ALL" : s.filter)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm ${upcomingFilter === s.filter ? `${s.bg} ring-2 ring-offset-1 ring-current` : `bg-[#FAF8F2] border-[#4A0F06]/10 hover:bg-[#D86F32]/5 hover:border-[#D86F32]/20`} ${s.color}`}>
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+                upcomingFilter === s.filter
+                  ? `${s.bg} ring-2 ring-offset-1 ring-current`
+                  : `bg-[#FAF8F2] border-[#4A0F06]/10 hover:bg-[#D86F32]/5 hover:border-[#D86F32]/20`
+              } ${s.color}`}>
               <span className={`w-2 h-2 rounded-full ${s.dot}`}/>{s.value} {s.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main layout */}
+      {/* ── Main layout ── */}
       <div className="flex flex-col lg:grid lg:grid-cols-[480px_1fr] gap-5 sm:gap-6 items-start">
 
-        {/* LEFT — Booking form */}
+        {/* ── LEFT: Booking form ── */}
         <div className="bg-[#FAF8F2] rounded-2xl border border-[#4A0F06]/8 shadow-sm overflow-hidden w-full">
-          {/* Form header */}
-          <div className="px-6 py-5 border-b border-[#4A0F06]/8 relative overflow-hidden" style={{background: "linear-gradient(135deg, #4A0F06, #5C1408)"}}>
+          <div className="px-6 py-5 border-b border-[#4A0F06]/8 relative overflow-hidden"
+            style={{background: "linear-gradient(135deg, #4A0F06, #5C1408)"}}>
             <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/8 rounded-full"/>
             <div className="absolute right-8 bottom-0 w-10 h-10 bg-white/8 rounded-full"/>
             <div className="relative">
@@ -237,7 +265,9 @@ export default function BookingPage() {
             {success && (
               <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
                 <div className="w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                  </svg>
                 </div>
                 <p className="text-sm font-semibold text-emerald-700">{success}</p>
               </div>
@@ -245,27 +275,35 @@ export default function BookingPage() {
             {error && (
               <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
                 <div className="w-7 h-7 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
                 </div>
                 <p className="text-sm font-semibold text-red-600">{error}</p>
               </div>
             )}
 
             <form onSubmit={handleBook} className="space-y-5">
+
               {/* Patient search */}
               <div>
                 <label className={labelCls}>Patient <span className="text-[#D86F32]">*</span></label>
                 <div className="relative">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
                   </div>
                   <input type="text" placeholder="Search by name or patient ID…" value={patientSearch} autoComplete="off"
                     onChange={e => { setPatientSearch(e.target.value); setShowDropdown(true); if (!e.target.value) clearPatient(); }}
                     onFocus={() => setShowDropdown(true)}
                     className={`${inputCls} pl-10 ${selectedPatient ? "pr-10" : ""}`}/>
                   {selectedPatient && (
-                    <button type="button" onClick={clearPatient} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#4A0F06]/30 hover:text-[#4A0F06]/60">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                    <button type="button" onClick={clearPatient}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#4A0F06]/30 hover:text-[#4A0F06]/60">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
                     </button>
                   )}
                 </div>
@@ -280,7 +318,9 @@ export default function BookingPage() {
                           <p className="text-xs font-mono text-[#4A0F06]/40">{p.patientCode}</p>
                         </div>
                         {p.phase && PHASES[p.phase] && (
-                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${PHASES[p.phase].color}`}>{PHASES[p.phase].label}</span>
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${PHASES[p.phase].color}`}>
+                            {PHASES[p.phase].label}
+                          </span>
                         )}
                       </button>
                     ))}
@@ -293,7 +333,10 @@ export default function BookingPage() {
                       <p className="text-xs font-bold">{PHASES[selectedPatient.phase].label} — {PHASES[selectedPatient.phase].desc}</p>
                       <p className="text-xs opacity-75 mt-0.5">{PHASES[selectedPatient.phase].hint}</p>
                     </div>
-                    <Link href={`/dashboard/patients/${selectedPatient.id}`} className="text-xs font-semibold underline opacity-75 hover:opacity-100 flex-shrink-0">View profile →</Link>
+                    <Link href={`/dashboard/patients/${selectedPatient.id}`}
+                      className="text-xs font-semibold underline opacity-75 hover:opacity-100 flex-shrink-0">
+                      View profile →
+                    </Link>
                   </div>
                 )}
               </div>
@@ -303,14 +346,19 @@ export default function BookingPage() {
                 <label className={labelCls}>Doctor <span className="text-[#D86F32]">*</span></label>
                 <div className="relative">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0"/></svg>
+                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0"/>
+                    </svg>
                   </div>
-                  <select required value={form.doctorId} onChange={e => setForm({...form, doctorId: e.target.value})} className={`${inputCls} pl-10 appearance-none`}>
+                  <select required value={form.doctorId} onChange={e => setForm({...form, doctorId: e.target.value})}
+                    className={`${inputCls} pl-10 appearance-none`}>
                     <option value="">Select a doctor</option>
                     {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                   <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
+                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+                    </svg>
                   </div>
                 </div>
               </div>
@@ -321,7 +369,11 @@ export default function BookingPage() {
                 <div className="grid grid-cols-3 gap-2">
                   {SESSION_TYPES.map(s => (
                     <button key={s.value} type="button" onClick={() => setForm({...form, sessionType: s.value})}
-                      className={`px-2 sm:px-3 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center ${form.sessionType === s.value ? "bg-[#4A0F06] border-[#4A0F06] text-[#F5F2E8] shadow-sm shadow-[#4A0F06]/20" : "bg-[#FAF8F2] border-[#4A0F06]/12 text-[#4A0F06]/60 hover:border-[#D86F32]/40 hover:text-[#D86F32]"}`}>
+                      className={`px-2 sm:px-3 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center ${
+                        form.sessionType === s.value
+                          ? "bg-[#4A0F06] border-[#4A0F06] text-[#F5F2E8] shadow-sm shadow-[#4A0F06]/20"
+                          : "bg-[#FAF8F2] border-[#4A0F06]/12 text-[#4A0F06]/60 hover:border-[#D86F32]/40 hover:text-[#D86F32]"
+                      }`}>
                       {s.label}
                     </button>
                   ))}
@@ -333,23 +385,27 @@ export default function BookingPage() {
                 <label className={labelCls}>Date <span className="text-[#D86F32]">*</span></label>
                 <div className="relative">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <svg className="w-4 h-4 text-[#4A0F06]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
                   </div>
-                  <input required type="date" value={form.date} min={todayStr} onChange={e => setForm({...form, date: e.target.value})} className={`${inputCls} pl-10`}/>
+                  <input required type="date" value={form.date} min={todayStr}
+                    onChange={e => setForm({...form, date: e.target.value})}
+                    className={`${inputCls} pl-10`}/>
                 </div>
               </div>
 
-              {/* ── Time picker (IST) ── */}
+              {/* Time picker (IST) */}
               <div>
                 <label className={labelCls}>Time (IST) <span className="text-[#D86F32]">*</span></label>
 
-                {/* Quick-pick slot chips */}
+                {/* Quick-pick chips */}
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {QUICK_SLOTS.map(slot => {
                     const [slotH24] = slot.split(":").map(Number);
                     const slotAmPm = slotH24 < 12 ? "AM" : "PM";
                     const slotH12  = slotH24 % 12 === 0 ? 12 : slotH24 % 12;
-                    const active = timeHour === slotH12 && timeMinute === 0 && timeAmPm === slotAmPm;
+                    const active   = timeHour === slotH12 && timeMinute === 0 && timeAmPm === slotAmPm;
                     return (
                       <button key={slot} type="button" onClick={() => handleQuickSlot(slot)}
                         className={`text-xs font-mono font-semibold px-2.5 py-1.5 rounded-lg border-2 transition-all ${
@@ -363,64 +419,54 @@ export default function BookingPage() {
                   })}
                 </div>
 
-                {/* Custom hour : minute spinner */}
+                {/* Spinner */}
                 <div className="flex items-center gap-2">
-                  {/* Hour spinner — 1 to 12 */}
+                  {/* Hour — 1 to 12 */}
                   <div className="flex-1 flex flex-col items-center gap-1">
-                    <button type="button"
-                      onClick={() => setTimeHour(h => (h % 12) + 1)}
+                    <button type="button" onClick={() => setTimeHour(h => (h % 12) + 1)}
                       className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/></svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/>
+                      </svg>
                     </button>
-                    <input
-                      type="number" min={1} max={12}
-                      value={timeHour}
-                      onChange={e => {
-                        const v = Math.max(1, Math.min(12, Number(e.target.value)));
-                        setTimeHour(isNaN(v) ? 1 : v);
-                      }}
-                      className={spinnerCls}
-                    />
-                    <button type="button"
-                      onClick={() => setTimeHour(h => h === 1 ? 12 : h - 1)}
+                    <input type="number" min={1} max={12} value={timeHour}
+                      onChange={e => { const v = Math.max(1, Math.min(12, Number(e.target.value))); setTimeHour(isNaN(v) ? 1 : v); }}
+                      className={spinnerCls}/>
+                    <button type="button" onClick={() => setTimeHour(h => h === 1 ? 12 : h - 1)}
                       className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/></svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/>
+                      </svg>
                     </button>
                     <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">Hour</span>
                   </div>
 
-                  {/* Colon separator */}
                   <div className="text-2xl font-black text-[#4A0F06]/30 mb-5 select-none">:</div>
 
-                  {/* Minute spinner — steps of 5 */}
+                  {/* Minute — steps of 5 */}
                   <div className="flex-1 flex flex-col items-center gap-1">
-                    <button type="button"
-                      onClick={() => setTimeMinute(m => (m + 5) % 60)}
+                    <button type="button" onClick={() => setTimeMinute(m => (m + 5) % 60)}
                       className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/></svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/>
+                      </svg>
                     </button>
-                    <input
-                      type="number" min={0} max={59} step={5}
-                      value={timeMinute}
-                      onChange={e => {
-                        const v = Math.max(0, Math.min(59, Number(e.target.value)));
-                        setTimeMinute(isNaN(v) ? 0 : v);
-                      }}
-                      className={spinnerCls}
-                    />
-                    <button type="button"
-                      onClick={() => setTimeMinute(m => (m - 5 + 60) % 60)}
+                    <input type="number" min={0} max={59} step={5} value={timeMinute}
+                      onChange={e => { const v = Math.max(0, Math.min(59, Number(e.target.value))); setTimeMinute(isNaN(v) ? 0 : v); }}
+                      className={spinnerCls}/>
+                    <button type="button" onClick={() => setTimeMinute(m => (m - 5 + 60) % 60)}
                       className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/></svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/>
+                      </svg>
                     </button>
                     <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">Min</span>
                   </div>
 
-                  {/* AM / PM toggle */}
+                  {/* AM/PM */}
                   <div className="flex flex-col items-center gap-1.5 mb-5">
                     {(["AM", "PM"] as const).map(period => (
-                      <button key={period} type="button"
-                        onClick={() => setTimeAmPm(period)}
+                      <button key={period} type="button" onClick={() => setTimeAmPm(period)}
                         className={`w-12 py-2 rounded-xl border-2 text-xs font-black tracking-wider transition-all ${
                           timeAmPm === period
                             ? "bg-[#4A0F06] border-[#4A0F06] text-[#F5F2E8] shadow-sm shadow-[#4A0F06]/20"
@@ -431,22 +477,29 @@ export default function BookingPage() {
                     ))}
                     <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">Period</span>
                   </div>
+
+                  {/* Live preview */}
                   <div className="flex flex-col items-center gap-1 mb-5 ml-1">
                     <div className="px-3 py-2 bg-[#4A0F06] rounded-xl shadow-md shadow-[#4A0F06]/20">
                       <span className="text-base font-black font-mono text-[#F5F2E8] tracking-tight">{currentTimeStr}</span>
                     </div>
-                    <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">IST</span>
+                    {/* Show 24h equivalent as a sanity check for staff */}
+                    <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">
+                      {pad(h24Preview)}:{pad(timeMinute)} IST
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Submit */}
-              <button type="submit" disabled={saving || !form.patientId || !form.doctorId}
+              <button type="submit" disabled={saving || !form.patientId || !form.doctorId || !form.date}
                 className="w-full flex items-center justify-center gap-2 bg-[#4A0F06] hover:bg-[#5C1408] text-[#F5F2E8] text-sm font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-md shadow-[#4A0F06]/25 hover:shadow-lg hover:-translate-y-0.5">
                 {saving ? (
                   <><div className="w-4 h-4 border-2 border-[#F5F2E8]/40 border-t-[#F5F2E8] rounded-full animate-spin"/>Booking…</>
                 ) : (
-                  <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Confirm Booking</>
+                  <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/>
+                  </svg>Confirm Booking</>
                 )}
               </button>
             </form>
@@ -454,28 +507,39 @@ export default function BookingPage() {
             {/* Reschedule rule hint */}
             <div className="flex items-start gap-3 p-4 bg-[#D86F32]/8 border border-[#D86F32]/20 rounded-2xl">
               <div className="w-6 h-6 bg-[#D86F32] rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01"/></svg>
+                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01"/>
+                </svg>
               </div>
               <div>
                 <p className="text-xs font-bold text-[#4A0F06]">Reschedule Rule</p>
-                <p className="text-xs text-[#4A0F06]/60 mt-0.5 leading-relaxed">Only 1 reschedule allowed per booking. All times are stored in UTC and displayed in IST.</p>
+                <p className="text-xs text-[#4A0F06]/60 mt-0.5 leading-relaxed">
+                  Only 1 reschedule allowed per booking. All times are stored in UTC and displayed in IST.
+                </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* RIGHT — Appointments list */}
-        <div className="bg-[#FAF8F2] rounded-2xl border border-[#4A0F06]/8 shadow-sm overflow-hidden flex flex-col w-full" style={{height: "calc(100vh - 160px)", minHeight: "400px"}}>
+        {/* ── RIGHT: Appointments list ── */}
+        <div className="bg-[#FAF8F2] rounded-2xl border border-[#4A0F06]/8 shadow-sm overflow-hidden flex flex-col w-full"
+          style={{height: "calc(100vh - 160px)", minHeight: "400px"}}>
           <div className="px-4 sm:px-6 py-5 border-b border-[#4A0F06]/6 flex-shrink-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
                 <h2 className="text-base font-bold text-[#4A0F06]">Appointments</h2>
-                <p className="text-xs text-[#4A0F06]/40 mt-0.5">{filteredUpcoming.length} {upcomingFilter === "ALL" ? "total" : upcomingFilter.toLowerCase()}</p>
+                <p className="text-xs text-[#4A0F06]/40 mt-0.5">
+                  {filteredUpcoming.length} {upcomingFilter === "ALL" ? "total" : upcomingFilter.toLowerCase()}
+                </p>
               </div>
-              <div className="flex items-center gap-1 bg-[#4A0F06]/6 p-1 rounded-xl">
-                {["ALL","CONFIRMED","ATTENDED","MISSED"].map(f => (
+              <div className="flex items-center gap-1 bg-[#4A0F06]/6 p-1 rounded-xl flex-wrap">
+                {["ALL","CONFIRMED","RESCHEDULED","ATTENDED","MISSED","CANCELLED"].map(f => (
                   <button key={f} onClick={() => setUpcomingFilter(f)}
-                    className={`text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg transition-all ${upcomingFilter === f ? "bg-[#FAF8F2] text-[#4A0F06] shadow-sm" : "text-[#4A0F06]/50 hover:text-[#4A0F06]/70"}`}>
+                    className={`text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg transition-all ${
+                      upcomingFilter === f
+                        ? "bg-[#FAF8F2] text-[#4A0F06] shadow-sm"
+                        : "text-[#4A0F06]/50 hover:text-[#4A0F06]/70"
+                    }`}>
                     {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
                   </button>
                 ))}
@@ -494,10 +558,14 @@ export default function BookingPage() {
             {filteredUpcoming.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center py-16">
                 <div className="w-14 h-14 bg-[#4A0F06]/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-7 h-7 text-[#4A0F06]/20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <svg className="w-7 h-7 text-[#4A0F06]/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
                 </div>
                 <p className="text-sm font-semibold text-[#4A0F06]/40">No appointments found</p>
-                <p className="text-xs text-[#4A0F06]/25 mt-1">{upcomingFilter !== "ALL" ? "Try switching to All" : "Book one using the form"}</p>
+                <p className="text-xs text-[#4A0F06]/25 mt-1">
+                  {upcomingFilter !== "ALL" ? "Try switching to All" : "Book one using the form"}
+                </p>
               </div>
             ) : (
               filteredUpcoming.map(a => {
@@ -506,7 +574,8 @@ export default function BookingPage() {
                 const time = new Date(a.startTime).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Kolkata"});
 
                 return (
-                  <div key={a.id} className="flex items-center gap-3 p-3 sm:p-3.5 rounded-2xl border-2 border-[#4A0F06]/6 hover:border-[#D86F32]/30 hover:bg-[#D86F32]/4 transition-all group">
+                  <div key={a.id}
+                    className="flex items-center gap-3 p-3 sm:p-3.5 rounded-2xl border-2 border-[#4A0F06]/6 hover:border-[#D86F32]/30 hover:bg-[#D86F32]/4 transition-all group">
                     <Avatar name={a.patient.name}/>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-[#4A0F06] truncate">{a.patient.name}</p>
@@ -515,7 +584,9 @@ export default function BookingPage() {
                         <span className="text-[#4A0F06]/20">·</span>
                         <span className="text-xs font-medium text-[#4A0F06]/50">{a.doctor.name}</span>
                         <span className="text-[#4A0F06]/20">·</span>
-                        <span className="text-xs font-medium text-[#4A0F06]/50 bg-[#4A0F06]/6 px-2 py-0.5 rounded-lg">{a.sessionType.replace(/_/g," ")}</span>
+                        <span className="text-xs font-medium text-[#4A0F06]/50 bg-[#4A0F06]/6 px-2 py-0.5 rounded-lg">
+                          {a.sessionType.replace(/_/g," ")}
+                        </span>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
@@ -528,7 +599,7 @@ export default function BookingPage() {
                       </div>
                     </div>
 
-                    {canManage && a.status === "CONFIRMED" && (
+                    {canManage && (a.status === "CONFIRMED" || a.status === "RESCHEDULED") && (
                       <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all">
                         <button onClick={() => handleCancel(a.id)} disabled={cancelling === a.id}
                           className="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 sm:px-2.5 py-1.5 rounded-xl transition-all disabled:opacity-40">
@@ -566,12 +637,14 @@ export default function BookingPage() {
 
       {rescheduleAppt && (
         <RescheduleModal appointmentId={rescheduleAppt.id} patientName={rescheduleAppt.patient.name}
-          onClose={() => setRescheduleAppt(null)} onSuccess={() => { setRescheduleAppt(null); loadUpcoming(); }}/>
+          onClose={() => setRescheduleAppt(null)}
+          onSuccess={() => { setRescheduleAppt(null); loadUpcoming(); }}/>
       )}
       {reassignAppt && (
         <ReassignDoctorModal appointmentId={reassignAppt.id} patientName={reassignAppt.patient.name}
           currentDoctorId={reassignAppt.doctor?.id ?? reassignAppt.doctorId ?? ""}
-          onClose={() => setReassignAppt(null)} onSuccess={() => { setReassignAppt(null); loadUpcoming(); }}/>
+          onClose={() => setReassignAppt(null)}
+          onSuccess={() => { setReassignAppt(null); loadUpcoming(); }}/>
       )}
     </div>
   );

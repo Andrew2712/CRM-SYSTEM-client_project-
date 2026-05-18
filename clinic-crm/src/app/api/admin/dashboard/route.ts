@@ -3,13 +3,11 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * GET /api/admin/dashboard
  *
- * Returns:
- * - Patient stats (NEW / RETURNING / ACTIVE / INACTIVE)
- * - Today's appointments
- * - Weekly stats
- * - Recent activity
- *
- * Access: ADMIN only
+ * FIXES:
+ *  • CANCELLED appointments no longer counted in `todayTotal` or weekly chart.
+ *  • Adds `cancelledToday`, `cancelledWeek`, `attendedToday`, `missedToday`
+ *    so the dashboard can render an accurate breakdown.
+ *  • `confirmedUpcoming` now also includes RESCHEDULED (still actionable).
  */
 
 import { NextResponse } from "next/server";
@@ -17,10 +15,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/rbac";
 import { enrichWithActivity } from "@/lib/patientActivity";
 
+const ACTIVE_STATUSES = ["CONFIRMED", "RESCHEDULED", "ATTENDED", "MISSED"] as const;
+
 export async function GET() {
-  // ─────────────────────────────────────────────────────────────
-  // 1️⃣ Auth + Role Guard
-  // ─────────────────────────────────────────────────────────────
   let session;
   try {
     session = await requireAuth();
@@ -32,46 +29,27 @@ export async function GET() {
   try {
     const now = new Date();
 
-    // ─────────────────────────────────────────────────────────────
-    // 2️⃣ Date Ranges
-    // ─────────────────────────────────────────────────────────────
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
     const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday
+    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
     weekStart.setHours(0, 0, 0, 0);
-
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 7);
 
-    // ─────────────────────────────────────────────────────────────
-    // 3️⃣ Parallel Queries (Optimized 🚀)
-    // ─────────────────────────────────────────────────────────────
     const [
       allPatients,
       todayAppointments,
       missedWeekCount,
+      cancelledWeekCount,
       recentAppointments,
       weekAppointments,
     ] = await Promise.all([
-      // ✅ All patients (with last attended appointment for activity)
       prisma.patient.findMany({
         select: {
-          id: true,
-          name: true,
-          patientCode: true,
-          status: true,
-          createdAt: true,
-
-          _count: {
-            select: { appointments: true },
-          },
-
-          // ⚡ Required for activity computation
+          id: true, name: true, patientCode: true, status: true, createdAt: true,
+          _count: { select: { appointments: true } },
           appointments: {
             where: { status: "ATTENDED" },
             orderBy: { startTime: "desc" },
@@ -82,129 +60,96 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
       }),
 
-      // ✅ Today's appointments
       prisma.appointment.findMany({
-        where: {
-          startTime: { gte: todayStart, lte: todayEnd },
-        },
+        where: { startTime: { gte: todayStart, lte: todayEnd } },
         orderBy: { startTime: "asc" },
         include: {
           patient: {
             select: {
-              id: true,
-              name: true,
-              patientCode: true,
-              status: true,
+              id: true, name: true, patientCode: true, status: true,
               _count: { select: { appointments: true } },
             },
           },
-          doctor: {
-            select: { id: true, name: true },
-          },
+          doctor: { select: { id: true, name: true } },
         },
       }),
 
-      // ✅ Missed this week
       prisma.appointment.count({
-        where: {
-          status: "MISSED",
-          startTime: { gte: weekStart, lt: weekEnd },
-        },
+        where: { status: "MISSED", startTime: { gte: weekStart, lt: weekEnd } },
+      }),
+      prisma.appointment.count({
+        where: { status: "CANCELLED", startTime: { gte: weekStart, lt: weekEnd } },
       }),
 
-      // ✅ Recent activity
       prisma.appointment.findMany({
         take: 20,
         orderBy: { startTime: "desc" },
         include: {
           patient: {
             select: {
-              id: true,
-              name: true,
-              patientCode: true,
-              status: true,
+              id: true, name: true, patientCode: true, status: true,
               _count: { select: { appointments: true } },
             },
           },
-          doctor: {
-            select: { id: true, name: true },
-          },
+          doctor: { select: { id: true, name: true } },
         },
       }),
 
-      // ✅ Weekly breakdown
+      // FIX: exclude CANCELLED from the weekly chart so the bar reflects
+      // sessions that actually contributed to clinic load.
       prisma.appointment.findMany({
         where: {
           startTime: { gte: weekStart, lt: weekEnd },
+          status: { not: "CANCELLED" },
         },
         select: { startTime: true },
       }),
     ]);
 
-    // ─────────────────────────────────────────────────────────────
-    // 4️⃣ Weekly Chart Data (Mon → Sun)
-    // ─────────────────────────────────────────────────────────────
     const weekCounts = Array(7).fill(0);
-
     for (const appt of weekAppointments) {
       const day = (new Date(appt.startTime).getDay() + 6) % 7;
       weekCounts[day]++;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 5️⃣ Enrich Patients with Activity
-    // ─────────────────────────────────────────────────────────────
     const enrichedPatients = enrichWithActivity(allPatients);
 
-    // ─────────────────────────────────────────────────────────────
-    // 6️⃣ Patient Metrics
-    // ─────────────────────────────────────────────────────────────
-    const totalPatients = enrichedPatients.length;
-
-    const newPatients = enrichedPatients.filter(
-      (p) => p.status === "NEW"
+    // ── FIX: todayTotal excludes CANCELLED ────────────────────────────────
+    const todayActive    = todayAppointments.filter(a => a.status !== "CANCELLED");
+    const todayTotal     = todayActive.length;
+    const cancelledToday = todayAppointments.length - todayActive.length;
+    const attendedToday  = todayAppointments.filter(a => a.status === "ATTENDED").length;
+    const missedToday    = todayAppointments.filter(a => a.status === "MISSED").length;
+    const confirmedUpcoming = todayAppointments.filter(
+      a => a.status === "CONFIRMED" || a.status === "RESCHEDULED",
     ).length;
 
-    const returningPatients = enrichedPatients.filter(
-      (p) => p.status === "RETURNING"
-    ).length;
-
-    const activePatients = enrichedPatients.filter(
-      (p) => p.activityStatus === "ACTIVE"
-    ).length;
-
-    const inactivePatients = enrichedPatients.filter(
-      (p) => p.activityStatus === "INACTIVE"
-    ).length;
-
-    // ─────────────────────────────────────────────────────────────
-    // 7️⃣ Response
-    // ─────────────────────────────────────────────────────────────
     return NextResponse.json({
-      totalPatients,
-      newPatients,
-      returningPatients,
-      activePatients,
-      inactivePatients,
+      totalPatients:      enrichedPatients.length,
+      newPatients:        enrichedPatients.filter(p => p.status === "NEW").length,
+      returningPatients:  enrichedPatients.filter(p => p.status === "RETURNING").length,
+      activePatients:     enrichedPatients.filter(p => p.activityStatus === "ACTIVE").length,
+      inactivePatients:   enrichedPatients.filter(p => p.activityStatus === "INACTIVE").length,
 
-      todayTotal: todayAppointments.length,
-      missedWeek: missedWeekCount,
-      confirmedUpcoming: todayAppointments.filter(
-        (a) => a.status === "CONFIRMED"
-      ).length,
+      todayTotal,
+      attendedToday,
+      missedToday,
+      cancelledToday,
+      confirmedUpcoming,
+
+      missedWeek:    missedWeekCount,
+      cancelledWeek: cancelledWeekCount,
 
       todayAppointments,
       recentAppointments,
       weekCounts,
-
       allPatients: enrichedPatients,
     });
   } catch (error) {
     console.error("Admin dashboard error:", error);
-
     return NextResponse.json(
       { error: "Failed to load dashboard data" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

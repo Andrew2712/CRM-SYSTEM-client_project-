@@ -1,12 +1,15 @@
 /**
- * src/app/api/appointments/[id]/route.ts  (REPLACE existing file)
+ * src/app/api/appointments/[id]/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * PATCH /api/appointments/:id
- * Extends existing logic with: cancel, reschedule, notes
  *
- * Roles:
- *   ATTENDED / MISSED / status updates  → ADMIN, DOCTOR (own only)
- *   CANCELLED / RESCHEDULED             → ADMIN, RECEPTIONIST
+ * Adds:
+ *  • Rescheduling NO LONGER blocks future status updates (FIX #2): the
+ *    rescheduled appointment can still be marked ATTENDED/MISSED later.
+ *  • When status flips to ATTENDED on a RESCHEDULED appointment, the PatientVisit
+ *    visitDate uses the *new* startTime.
+ *  • Cancelling an appointment also clears any pending reminder notifications.
+ *  • Idempotent: re-marking the same status no longer creates duplicate visits.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -27,51 +30,40 @@ import { toIST } from "@/lib/timezone";
 const VALID_STATUSES = ["ATTENDED", "MISSED", "CONFIRMED", "CANCELLED", "RESCHEDULED"] as const;
 type UpdatableStatus = (typeof VALID_STATUSES)[number];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH
-// ─────────────────────────────────────────────────────────────────────────────
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  // Auth
   let session;
-  try {
-    session = await requireAuth();
-  } catch (err) {
-    return err as NextResponse;
-  }
+  try { session = await requireAuth(); } catch (err) { return err as NextResponse; }
 
   const { id } = await params;
 
-  // Parse body
   let body: {
     status?: UpdatableStatus;
     notes?: string;
     startTime?: string;
     endTime?: string;
   };
-  try {
-    body = await req.json();
-  } catch {
+  try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const { status, notes, startTime, endTime } = body;
 
-  // ── Reschedule path (ADMIN / RECEPTIONIST only) ───────────────────────────
+  // ── Reschedule path ───────────────────────────────────────────────────────
   if (startTime || endTime) {
-    try {
-      requireRole(session, ["ADMIN", "RECEPTIONIST"]);
-    } catch (err) {
-      return err as NextResponse;
-    }
+    try { requireRole(session, ["ADMIN", "RECEPTIONIST"]); }
+    catch (err) { return err as NextResponse; }
 
     if (!startTime || !endTime) {
       return NextResponse.json(
         { error: "Both startTime and endTime required for reschedule" },
-        { status: 400 }
+        { status: 400 },
       );
+    }
+    if (new Date(startTime) >= new Date(endTime)) {
+      return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
     }
 
     try {
@@ -92,24 +84,19 @@ export async function PATCH(
 
       const newDateTimeIST = toIST(new Date(startTime));
 
-      // In-app: notify the doctor
       createInAppNotification(
         appointment.doctorId,
         "APPOINTMENT_RESCHEDULED",
         "Appointment Rescheduled",
         `${appointment.patient.name}'s appointment has been rescheduled to ${newDateTimeIST}`,
-        id
+        id,
       ).catch(console.error);
-
-      // In-app: notify admin/receptionist
       notifyAdminAndReceptionist(
         "APPOINTMENT_RESCHEDULED",
         "Appointment Rescheduled",
         `${appointment.patient.name} with Dr. ${appointment.doctor.name} → ${newDateTimeIST}`,
-        id
+        id,
       ).catch(console.error);
-
-      // External notifications
       sendRescheduleNotifications(id, newDateTimeIST).catch(console.error);
 
       revalidatePath("/dashboard");
@@ -124,39 +111,27 @@ export async function PATCH(
   }
 
   // ── Status update path ────────────────────────────────────────────────────
-
-  // Role check: CANCELLED → ADMIN or RECEPTIONIST only; others → ADMIN or DOCTOR
   if (status === "CANCELLED") {
-    try {
-      requireRole(session, ["ADMIN", "RECEPTIONIST"]);
-    } catch (err) {
-      return err as NextResponse;
-    }
+    try { requireRole(session, ["ADMIN", "RECEPTIONIST"]); }
+    catch (err) { return err as NextResponse; }
   } else {
-    try {
-      requireRole(session, ["ADMIN", "DOCTOR"]);
-    } catch (err) {
-      return err as NextResponse;
-    }
-    // DOCTOR ownership check
-    try {
-      await assertCanAccessAppointment(id, session);
-    } catch (err) {
-      return err as NextResponse;
-    }
+    try { requireRole(session, ["ADMIN", "DOCTOR"]); }
+    catch (err) { return err as NextResponse; }
+    try { await assertCanAccessAppointment(id, session); }
+    catch (err) { return err as NextResponse; }
   }
 
   if (status && !VALID_STATUSES.includes(status)) {
     return NextResponse.json(
       { error: `Invalid status. Allowed: ${VALID_STATUSES.join(", ")}` },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   try {
     const updateData: Record<string, unknown> = {};
     if (status !== undefined) updateData.status = status;
-    if (notes !== undefined) updateData.notes = notes;
+    if (notes !== undefined)  updateData.notes = notes;
 
     const appointment = await prisma.appointment.update({
       where: { id },
@@ -167,11 +142,11 @@ export async function PATCH(
       },
     });
 
-    // ATTENDED → create/update visit + mark patient RETURNING
+    // ATTENDED → upsert visit + mark patient RETURNING
     if (status === "ATTENDED") {
       await prisma.patientVisit.upsert({
         where: { appointmentId: id },
-        update: { status, notes: notes ?? null },
+        update: { status, notes: notes ?? null, visitDate: appointment.startTime },
         create: {
           patientId: appointment.patientId,
           doctorId: appointment.doctorId,
@@ -188,28 +163,36 @@ export async function PATCH(
       });
     }
 
-    // MISSED → fire missed-session notifications
     if (status === "MISSED") {
       sendMissedSessionNotifications(id).catch(console.error);
       notifyAdminAndReceptionist(
         "APPOINTMENT_MISSED",
         "Appointment Missed",
         `${appointment.patient.name} missed session with Dr. ${appointment.doctor.name}`,
-        id
+        id,
       ).catch(console.error);
     }
 
-    // CANCELLED → fire cancellation notifications
     if (status === "CANCELLED") {
-      sendCancellationNotifications(id).catch(console.error);
+      // Cancel any still-pending reminder notifications to avoid sending them.
+      await prisma.notification.updateMany({
+        where: { appointmentId: id, status: "PENDING" },
+        data:  { status: "FAILED" },
+      }).catch(() => undefined);
 
-      // In-app: notify the doctor
+      sendCancellationNotifications(id).catch(console.error);
       createInAppNotification(
         appointment.doctorId,
         "APPOINTMENT_CANCELLED",
         "Appointment Cancelled",
         `${appointment.patient.name}'s appointment has been cancelled`,
-        id
+        id,
+      ).catch(console.error);
+      notifyAdminAndReceptionist(
+        "APPOINTMENT_CANCELLED",
+        "Appointment Cancelled",
+        `${appointment.patient.name} with Dr. ${appointment.doctor.name} — cancelled`,
+        id,
       ).catch(console.error);
     }
 
