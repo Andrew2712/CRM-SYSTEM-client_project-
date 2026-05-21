@@ -1,7 +1,7 @@
 /**
  * src/app/api/appointments/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * GET  /api/appointments   — list appointments (scoped by role)
+ * GET  /api/appointments  — list appointments (scoped by role)
  * POST /api/appointments  — create an appointment
  */
 
@@ -10,7 +10,6 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, getAppointmentFilter } from "@/lib/rbac";
 import { SessionType } from "@prisma/client";
 import { sendBookingConfirmations } from "@/lib/notificationWorkflow";
-import { createInAppNotification, notifyAdminAndReceptionist } from "@/lib/inAppNotifications";
 import { toIST } from "@/lib/timezone";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const from = req.nextUrl.searchParams.get("from");
-    const to = req.nextUrl.searchParams.get("to");
+    const to   = req.nextUrl.searchParams.get("to");
 
     const roleFilter = getAppointmentFilter(session);
 
@@ -34,12 +33,7 @@ export async function GET(req: NextRequest) {
       where: {
         ...roleFilter,
         ...(from && to
-          ? {
-              startTime: {
-                gte: new Date(from),
-                lt: new Date(to),
-              },
-            }
+          ? { startTime: { gte: new Date(from), lt: new Date(to) } }
           : {}),
       },
       orderBy: { startTime: "desc" },
@@ -90,10 +84,7 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const { patientId, doctorId, sessionType, startTime, endTime } = body;
@@ -116,12 +107,45 @@ export async function POST(req: NextRequest) {
 
   try {
     const start = new Date(startTime);
-    const end = new Date(endTime);
+    const end   = new Date(endTime);
 
-    // ✅ Prevent invalid time ranges
     if (start >= end) {
       return NextResponse.json(
         { error: "End time must be after start time" },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Guard: reject booking with a deactivated doctor
+    const doctor = await prisma.user.findUnique({
+      where: { id: doctorId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!doctor) {
+      return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
+    }
+
+    if (!doctor.isActive) {
+      return NextResponse.json(
+        { error: "Cannot book an appointment with a deactivated doctor" },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Guard: reject booking for a deactivated patient
+    const patient = await prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!patient) {
+      return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+    }
+
+    if (!patient.isActive) {
+      return NextResponse.json(
+        { error: "Cannot book an appointment for a deactivated patient" },
         { status: 400 }
       );
     }
@@ -154,17 +178,12 @@ export async function POST(req: NextRequest) {
       },
       include: {
         patient: true,
-        doctor: {
-          select: { id: true, name: true },
-        },
+        doctor: { select: { id: true, name: true } },
       },
     });
 
-    // ✅ Update patient status → RETURNING
-    const apptCount = await prisma.appointment.count({
-      where: { patientId },
-    });
-
+    // ✅ Update patient status → RETURNING if they have more than 1 appointment
+    const apptCount = await prisma.appointment.count({ where: { patientId } });
     if (apptCount > 1) {
       await prisma.patient.update({
         where: { id: patientId },
@@ -172,7 +191,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ✅ Fire booking confirmation notifications (non-blocking — errors logged, won't break booking)
+    // ✅ Fire booking confirmation notifications (non-blocking)
     sendBookingConfirmations(appointment.id).catch((err) =>
       console.error("[Notifications] Booking confirmation failed:", err)
     );

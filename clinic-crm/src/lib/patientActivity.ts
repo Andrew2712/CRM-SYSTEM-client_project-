@@ -83,6 +83,7 @@ export function enrichWithActivity<
 // ✅ Fetch Patients with Activity (MAIN FUNCTION)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Add isActive: true to the base where clause
 export async function fetchPatientsWithActivity(options?: {
   where?: Prisma.PatientWhereInput;
   searchTerm?: string;
@@ -90,47 +91,25 @@ export async function fetchPatientsWithActivity(options?: {
 }) {
   const { where = {}, searchTerm = "", statusFilter = "" } = options ?? {};
 
-  try {
-    const patients = await prisma.patient.findMany({
-      where: {
-        ...where,
+  const patients = await prisma.patient.findMany({
+    where: {
+      isActive: true,          // ← ADD THIS
+      ...where,
+      ...(searchTerm ? {
+        OR: [
+          { name: { contains: searchTerm, mode: "insensitive" } },
+          { phone: { contains: searchTerm } },
+          { patientCode: { contains: searchTerm, mode: "insensitive" } },
+        ],
+      } : {}),
+      ...(statusFilter ? { status: statusFilter as PatientStatus } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      ...activityInclude,
+      _count: { select: { appointments: true } },
+    },
+  });
 
-        // 🔍 Search
-        ...(searchTerm
-          ? {
-              OR: [
-                { name: { contains: searchTerm, mode: "insensitive" } },
-                { phone: { contains: searchTerm } },
-                {
-                  patientCode: {
-                    contains: searchTerm,
-                    mode: "insensitive",
-                  },
-                },
-              ],
-            }
-          : {}),
-
-        // 📌 Patient status filter (NOT activity status)
-        ...(statusFilter
-          ? { status: statusFilter as PatientStatus }
-          : {}),
-      },
-
-      orderBy: { createdAt: "desc" },
-
-      include: {
-        ...activityInclude,
-
-        _count: {
-          select: { appointments: true },
-        },
-      },
-    });
-
-    return enrichWithActivity(patients);
-  } catch (error) {
-    console.error("fetchPatientsWithActivity error:", error);
-    throw new Error("Failed to fetch patients with activity");
-  }
+  return enrichWithActivity(patients);
 }

@@ -53,8 +53,6 @@ export async function PATCH(
 
   const role = session.user.role;
 
-  // RECEPTIONIST can edit basic patient profile fields (name, phone, address, etc.)
-  // ADMIN and DOCTOR can edit everything including phase, sessions, medical data
   const canEditBasic    = ["ADMIN", "DOCTOR", "RECEPTIONIST"].includes(role);
   const canEditClinical = ["ADMIN", "DOCTOR"].includes(role);
 
@@ -74,7 +72,6 @@ export async function PATCH(
   try {
     const data: Record<string, unknown> = {};
 
-    // Fields any allowed role can update
     if (body.name  !== undefined) data.name  = body.name;
     if (body.phone !== undefined) data.phone = body.phone;
     if (body.age   !== undefined) data.age   = Number(body.age);
@@ -82,12 +79,10 @@ export async function PATCH(
     if (body.address !== undefined) data.address = body.address;
     if (body.purposeOfVisit !== undefined) data.purposeOfVisit = body.purposeOfVisit;
 
-    // Email: only ADMIN can update
     if (body.email !== undefined && role === "ADMIN") {
       data.email = body.email;
     }
 
-    // Clinical fields: only ADMIN and DOCTOR
     if (canEditClinical) {
       if (body.medicalConditions !== undefined) data.medicalConditions = body.medicalConditions;
       if (body.status            !== undefined) data.status            = body.status as PatientStatus;
@@ -137,19 +132,49 @@ export async function DELETE(
   }
 
   const { id } = await params;
+  if (!id) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
 
   try {
-    await prisma.notification.deleteMany({ where: { appointment: { patientId: id } } });
-    await prisma.patientVisit.deleteMany({ where: { patientId: id } });
-    await prisma.appointment.deleteMany({ where: { patientId: id } });
-    await prisma.patient.delete({ where: { id } });
+    const patient = await prisma.patient.findUnique({
+      where: { id },
+      select: { id: true, name: true, isActive: true },
+    });
 
-    return NextResponse.json({ success: true });
+    if (!patient) {
+      return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+    }
+
+    if (!patient.isActive) {
+      return NextResponse.json({ error: "Patient is already deactivated" }, { status: 409 });
+    }
+
+    // ✅ Soft delete — no rows removed, all history preserved
+    const deactivated = await prisma.patient.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+      },
+      select: {
+        id: true,
+        name: true,
+        patientCode: true,
+        isActive: true,
+        deletedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      message: `Patient "${deactivated.name}" has been deactivated.`,
+      patient: deactivated,
+    });
   } catch (err: any) {
     if (err.code === "P2025") {
       return NextResponse.json({ error: "Patient not found" }, { status: 404 });
     }
     console.error(err);
-    return NextResponse.json({ error: "Failed to delete patient" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to deactivate patient" }, { status: 500 });
   }
 }

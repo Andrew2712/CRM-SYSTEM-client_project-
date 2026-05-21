@@ -3,15 +3,16 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * GET /api/staff
  *
- * Returns all staff members (Users) with their profile fields.
+ * Returns active staff members by default.
+ * Pass ?includeInactive=true (ADMIN only) to include deactivated staff.
  * Access: ADMIN only
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/rbac";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   // ── Auth + Role Guard ──────────────────────────────────────────────────────
   let session;
   try {
@@ -22,7 +23,13 @@ export async function GET() {
   }
 
   try {
+    const includeInactive = req.nextUrl.searchParams.get("includeInactive") === "true";
+
     const staff = await prisma.user.findMany({
+      where: {
+        // Hide deactivated staff unless admin explicitly requests them
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       select: {
         id:        true,
         name:      true,
@@ -30,6 +37,8 @@ export async function GET() {
         role:      true,
         phone:     true,
         createdAt: true,
+        isActive:  true,
+        deletedAt: true,
       },
       orderBy: [
         { role: "asc" },

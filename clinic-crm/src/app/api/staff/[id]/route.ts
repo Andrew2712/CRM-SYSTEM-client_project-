@@ -1,9 +1,9 @@
 /**
- * src/app/api/staff/[id]/route.ts  (REPLACE existing file)
+ * src/app/api/staff/[id]/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * GET    /api/staff/[id]  → fetch staff profile
  * PATCH  /api/staff/[id]  → update staff profile (ADMIN + RECEPTIONIST)
- * DELETE /api/staff/[id]  → remove staff member (ADMIN only)
+ * DELETE /api/staff/[id]  → soft-deactivate staff member (ADMIN only)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -36,6 +36,8 @@ export async function GET(
         role: true,
         phone: true,
         createdAt: true,
+        isActive: true,
+        deletedAt: true,
         _count: { select: { appointments: true } },
       },
     });
@@ -56,12 +58,10 @@ export async function PATCH(
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Only ADMIN and RECEPTIONIST can edit staff profiles
   if (!["ADMIN", "RECEPTIONIST"].includes(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // RECEPTIONIST can only edit their own profile
   const { id } = await params;
   if (session.user.role === "RECEPTIONIST" && session.user.id !== id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -76,9 +76,8 @@ export async function PATCH(
 
   try {
     const data: Record<string, unknown> = {};
-    if (body.name !== undefined)  data.name  = body.name;
+    if (body.name  !== undefined) data.name  = body.name;
     if (body.phone !== undefined) data.phone = body.phone;
-    // email update only for ADMIN
     if (body.email !== undefined && session.user.role === "ADMIN") {
       data.email = body.email;
     }
@@ -112,17 +111,46 @@ export async function DELETE(
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   if (session.user.id === id)
-    return NextResponse.json({ error: "You cannot remove your own account" }, { status: 400 });
+    return NextResponse.json({ error: "You cannot deactivate your own account" }, { status: 400 });
 
   try {
-    await prisma.notification.deleteMany({ where: { appointment: { doctorId: id } } });
-    await prisma.appointment.deleteMany({ where: { doctorId: id } });
-    await prisma.user.delete({ where: { id } });
-    return NextResponse.json({ success: true });
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, isActive: true },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "Staff member not found" }, { status: 404 });
+    }
+
+    if (!user.isActive) {
+      return NextResponse.json({ error: "Staff member is already deactivated" }, { status: 409 });
+    }
+
+    // ✅ Soft delete — all appointments, notifications, audit logs preserved
+    const deactivated = await prisma.user.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date(),
+      },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        isActive: true,
+        deletedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      message: `Staff member "${deactivated.name}" has been deactivated.`,
+      user: deactivated,
+    });
   } catch (err: unknown) {
     if ((err as { code?: string }).code === "P2025")
       return NextResponse.json({ error: "Staff member not found" }, { status: 404 });
     console.error("[DELETE /api/staff/[id]] error:", err);
-    return NextResponse.json({ error: "Failed to remove staff member" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to deactivate staff member" }, { status: 500 });
   }
 }

@@ -16,6 +16,11 @@ import { requireAuth, requireRole } from "@/lib/rbac";
 import { enrichWithActivity } from "@/lib/patientActivity";
 
 const ACTIVE_STATUSES = ["CONFIRMED", "RESCHEDULED", "ATTENDED", "MISSED"] as const;
+const [totalPatients, newPatients, returningPatients] = await Promise.all([
+  prisma.patient.count({ where: { isActive: true } }),
+  prisma.patient.count({ where: { isActive: true, status: "NEW" } }),
+  prisma.patient.count({ where: { isActive: true, status: "RETURNING" } }),
+]);
 
 export async function GET() {
   let session;

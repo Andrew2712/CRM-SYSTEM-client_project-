@@ -113,12 +113,18 @@ export async function assertCanAccessAppointment(
 export function getPatientFilter(
   session: AuthSession
 ): Prisma.PatientWhereInput {
+  const base: Prisma.PatientWhereInput = {
+    isActive: true,            // ← ADD THIS to the base filter
+  };
+
   if (session.user.role === "DOCTOR") {
     return {
+      ...base,
       appointments: {
         some: { doctorId: session.user.id },
       },
     };
   }
-  return {};
+
+  return base;
 }
