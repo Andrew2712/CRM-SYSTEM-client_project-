@@ -6,10 +6,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-
   let session;
-
   try {
     session = await requireAuth();
     requireRole(session, ["ADMIN"]);
@@ -17,34 +14,24 @@ export async function PATCH(
     return err as NextResponse;
   }
 
-  const { id } = await params;
+  const { id: patientId } = await params;
 
   try {
     const restored = await prisma.patient.update({
-      where: { id },
+      where: { id: patientId },
       data: {
         isActive: true,
         deletedAt: null,
       },
-      select: {
-        id: true,
-        name: true,
-        isActive: true,
-      },
+      select: { id: true, name: true, isActive: true },
     });
 
     return NextResponse.json({
       message: `Patient "${restored.name}" has been reactivated.`,
       patient: restored,
     });
-
   } catch (error) {
-
-    console.error(
-      "PATCH /patients/[id]/restore error:",
-      error
-    );
-
+    console.error("PATCH /patients/[id]/restore error:", error);
     return NextResponse.json(
       { error: "Failed to reactivate patient" },
       { status: 500 }
