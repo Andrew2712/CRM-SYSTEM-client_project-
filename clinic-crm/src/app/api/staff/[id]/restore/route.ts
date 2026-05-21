@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from "@/lib/rbac";
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+ { params }: { params: Promise<{ id: string }> }
 ) {
   let session;
   try {
