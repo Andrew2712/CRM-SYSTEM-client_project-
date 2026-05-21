@@ -1,56 +1,32 @@
 /**
  * src/proxy.ts
- * ─────────────────────────────────────────────────────────────────────────────
- * Route protection:
- *   - /dashboard/* → Staff only (ADMIN, DOCTOR, RECEPTIONIST)
- *   - /patient/*   → PATIENT role only
- *   - Unauthenticated → /auth/login
  */
 
-import { withAuth } from "next-auth/middleware";
+import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
-function proxy(req: NextRequest) {
+function proxy(req: NextRequestWithAuth) {
   const { pathname } = req.nextUrl;
 
-  const role =
-    req.nextauth.token?.role as
-      | "ADMIN"
-      | "DOCTOR"
-      | "RECEPTIONIST"
-      | "PATIENT"
-      | undefined;
+  const role = req.nextauth.token?.role as
+    | "ADMIN"
+    | "DOCTOR"
+    | "RECEPTIONIST"
+    | "PATIENT"
+    | undefined;
 
-  // Patient trying to enter staff dashboard
-  if (
-    pathname.startsWith("/dashboard") &&
-    role === "PATIENT"
-  ) {
-    return NextResponse.redirect(
-      new URL("/patient/dashboard", req.url)
-    );
+  if (pathname.startsWith("/dashboard") && role === "PATIENT") {
+    return NextResponse.redirect(new URL("/patient/dashboard", req.url));
   }
 
-  // Staff trying to enter patient portal
-  if (
-    pathname.startsWith("/patient") &&
-    role &&
-    role !== "PATIENT"
-  ) {
-
-    const staffDestinations = {
-      ADMIN: "/dashboard",
-      DOCTOR: "/dashboard/doctor",
+  if (pathname.startsWith("/patient") && role && role !== "PATIENT") {
+    const staffDestinations: Record<string, string> = {
+      ADMIN:        "/dashboard",
+      DOCTOR:       "/dashboard/doctor",
       RECEPTIONIST: "/dashboard/booking",
     };
-
     return NextResponse.redirect(
-      new URL(
-        staffDestinations[role] ??
-          "/dashboard",
-        req.url
-      )
+      new URL(staffDestinations[role] ?? "/dashboard", req.url)
     );
   }
 
@@ -58,28 +34,14 @@ function proxy(req: NextRequest) {
 }
 
 export default withAuth(proxy, {
-
   callbacks: {
-
-    authorized: ({ token }) => {
-      return !!token;
-    },
-
+    authorized: ({ token }) => !!token,
   },
-
   pages: {
-
     signIn: "/auth/login",
-
   },
-
 });
 
 export const config = {
-
-  matcher: [
-    "/dashboard/:path*",
-    "/patient/:path*",
-  ],
-
+  matcher: ["/dashboard/:path*", "/patient/:path*"],
 };

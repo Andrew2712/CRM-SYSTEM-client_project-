@@ -15,6 +15,8 @@ export async function PATCH(
     return err as NextResponse;
   }
 
+  const { id } = await params;
+
   try {
     // Next.js 16 fix
     const { id } = await params;

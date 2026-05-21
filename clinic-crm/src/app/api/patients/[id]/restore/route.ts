@@ -17,6 +17,8 @@ export async function PATCH(
     return err as NextResponse;
   }
 
+  const { id } = await params;
+
   try {
     const restored = await prisma.patient.update({
       where: { id },
