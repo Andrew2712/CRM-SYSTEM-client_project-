@@ -6,6 +6,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   let session;
 
   try {
@@ -16,9 +18,6 @@ export async function PATCH(
   }
 
   try {
-    // Next.js 16 fix
-    const { id } = await params;
-
     const restored = await prisma.patient.update({
       where: { id },
       data: {
