@@ -28,6 +28,7 @@ model User {
   reassignmentRequests  DoctorReassignmentRequest[] @relation("ReassignmentRequester")
   reassignmentsFrom     DoctorReassignmentRequest[] @relation("ReassignmentFrom")
   reassignmentsTo       DoctorReassignmentRequest[] @relation("ReassignmentTo")
+  expenses            Expense[]
 }
 
 model Patient {
@@ -229,4 +230,43 @@ enum ReassignmentStatus {
   PENDING
   ACCEPTED
   REJECTED
+}
+
+// ─── Expense Tracker ──────────────────────────────────────────────────────────
+
+model Expense {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  category    ExpenseCategory
+  amount      Float
+  expenseDate DateTime
+  paymentMode PaymentMode
+  isDeleted   Boolean         @default(false)
+  deletedAt   DateTime?
+  createdById String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  createdBy   User @relation(fields: [createdById], references: [id])
+}
+
+enum ExpenseCategory {
+  SALARY
+  RENT
+  ELECTRICITY
+  INTERNET
+  EQUIPMENT
+  MEDICINE
+  MAINTENANCE
+  MARKETING
+  TRANSPORT
+  OTHER
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
 }

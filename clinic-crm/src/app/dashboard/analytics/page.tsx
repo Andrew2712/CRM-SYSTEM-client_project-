@@ -638,7 +638,7 @@ export default function AnalyticsPage() {
   const weeklyTrendData = (d?.weeklyTrend ?? []).map(w => ({ ...w, weekShort: w.week }));
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 bg-gray-50">
+    <div className="min-h-screen p-4 sm:p-6 bg-[#F5F1E8]">
       <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
 
         {/* ── Header ── */}

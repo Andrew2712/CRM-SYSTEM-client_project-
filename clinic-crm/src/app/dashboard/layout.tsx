@@ -35,6 +35,7 @@ import {
   Menu,
   X,
   Activity,
+  Wallet,
 } from "lucide-react";
 import type { ForwardRefExoticComponent, RefAttributes } from "react";
 import type { LucideProps } from "lucide-react";
@@ -118,6 +119,7 @@ const NAV: NavGroup[] = [
     group: "System",
     items: [
       { href: "/dashboard/analytics",     label: "Analytics",     icon: BarChart3, roles: ["ADMIN"] },
+      { href: "/dashboard/expenses",      label: "Expenses",      icon: Wallet,    roles: ["ADMIN", "RECEPTIONIST"] },
       { href: "/dashboard/notifications", label: "Notifications", icon: Bell,      roles: ["ADMIN", "RECEPTIONIST"] },
     ],
   },
