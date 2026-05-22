@@ -209,9 +209,9 @@ export default function StaffProfilePage() {
 
         if (ar.ok) {
           const apptData: AppointmentSlim[] = await ar.json();
-          const filtered = isAdmin
-            ? apptData
-            : apptData.filter((a: any) => a.doctor?.id === staffId || a.doctorId === staffId);
+          // ✅ FIX: Always filter by the VIEWED staff member's ID, regardless of viewer role.
+          // Previously, admin saw ALL appointments instead of only the viewed doctor's.
+          const filtered = apptData.filter((a: any) => a.doctor?.id === staffId || a.doctorId === staffId);
           setAppointments(Array.isArray(filtered) ? filtered : []);
         }
         setLoading(false);
@@ -392,39 +392,7 @@ export default function StaffProfilePage() {
           </div>
         </div>
 
-        {/* ── Session Analytics ── */}
-        <div>
-          <div className="flex items-center gap-2 mb-3 sm:mb-4">
-            <div className="w-7 h-7 bg-[#FDF3EC] rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-[#D97332]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <h2 className="text-base font-bold text-[#2B1A14]">Session Analytics</h2>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <StatsCard
-              label="Total Sessions" value={totalSess} sub={`${attendedSess} attended`}
-              color="#4B0F05" accent="border-[#DDD2C2]"
-              icon={<svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
-            />
-            <StatsCard
-              label="Attended" value={attendedSess} sub="sessions completed"
-              color="#4F8A5B" accent="border-[#4F8A5B]/20"
-              icon={<svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-            />
-            <StatsCard
-              label="Missed" value={missedSess} sub="no-shows"
-              color="#C94F4F" accent="border-[#C94F4F]/20"
-              icon={<svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-            />
-            <StatsCard
-              label="Upcoming" value={upcomingSess} sub="scheduled ahead"
-              color="#D97332" accent="border-[#D97332]/20"
-              icon={<svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-            />
-          </div>
-        </div>
+
 
         {/* ── Charts ── */}
         {/*
@@ -453,7 +421,7 @@ export default function StaffProfilePage() {
             below prevents horizontal scroll.
           */}
           <div className="overflow-hidden">
-            <AnalyticsCharts appointments={appointments} chartsReady={chartsReady} />
+            <AnalyticsCharts appointments={appointments} chartsReady={chartsReady} doctorName={profile?.name} />
           </div>
         </div>
 
