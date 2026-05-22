@@ -1,26 +1,11 @@
 /**
  * src/app/api/admin/dashboard/route.ts
- * ─────────────────────────────────────────────────────────────────────────────
- * GET /api/admin/dashboard
- *
- * FIXES:
- *  • CANCELLED appointments no longer counted in `todayTotal` or weekly chart.
- *  • Adds `cancelledToday`, `cancelledWeek`, `attendedToday`, `missedToday`
- *    so the dashboard can render an accurate breakdown.
- *  • `confirmedUpcoming` now also includes RESCHEDULED (still actionable).
  */
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/rbac";
 import { enrichWithActivity } from "@/lib/patientActivity";
-
-const ACTIVE_STATUSES = ["CONFIRMED", "RESCHEDULED", "ATTENDED", "MISSED"] as const;
-const [totalPatients, newPatients, returningPatients] = await Promise.all([
-  prisma.patient.count({ where: { isActive: true } }),
-  prisma.patient.count({ where: { isActive: true, status: "NEW" } }),
-  prisma.patient.count({ where: { isActive: true, status: "RETURNING" } }),
-]);
 
 export async function GET() {
   let session;
@@ -44,14 +29,17 @@ export async function GET() {
     weekEnd.setDate(weekStart.getDate() + 7);
 
     const [
-      allPatients,
+      allActivePatients,        // ✅ active patients only
       todayAppointments,
       missedWeekCount,
       cancelledWeekCount,
       recentAppointments,
       weekAppointments,
     ] = await Promise.all([
+
+      // ✅ isActive: true — deactivated patients are excluded from all counts
       prisma.patient.findMany({
+        where: { isActive: true },
         select: {
           id: true, name: true, patientCode: true, status: true, createdAt: true,
           _count: { select: { appointments: true } },
@@ -65,6 +53,7 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
       }),
 
+      // Appointments — full history, no isActive filter needed here
       prisma.appointment.findMany({
         where: { startTime: { gte: todayStart, lte: todayEnd } },
         orderBy: { startTime: "asc" },
@@ -100,8 +89,6 @@ export async function GET() {
         },
       }),
 
-      // FIX: exclude CANCELLED from the weekly chart so the bar reflects
-      // sessions that actually contributed to clinic load.
       prisma.appointment.findMany({
         where: {
           startTime: { gte: weekStart, lt: weekEnd },
@@ -117,24 +104,24 @@ export async function GET() {
       weekCounts[day]++;
     }
 
-    const enrichedPatients = enrichWithActivity(allPatients);
+    const enrichedPatients = enrichWithActivity(allActivePatients);
 
-    // ── FIX: todayTotal excludes CANCELLED ────────────────────────────────
-    const todayActive    = todayAppointments.filter(a => a.status !== "CANCELLED");
-    const todayTotal     = todayActive.length;
-    const cancelledToday = todayAppointments.length - todayActive.length;
-    const attendedToday  = todayAppointments.filter(a => a.status === "ATTENDED").length;
-    const missedToday    = todayAppointments.filter(a => a.status === "MISSED").length;
+    const todayActive       = todayAppointments.filter(a => a.status !== "CANCELLED");
+    const todayTotal        = todayActive.length;
+    const cancelledToday    = todayAppointments.length - todayActive.length;
+    const attendedToday     = todayAppointments.filter(a => a.status === "ATTENDED").length;
+    const missedToday       = todayAppointments.filter(a => a.status === "MISSED").length;
     const confirmedUpcoming = todayAppointments.filter(
       a => a.status === "CONFIRMED" || a.status === "RESCHEDULED",
     ).length;
 
     return NextResponse.json({
-      totalPatients:      enrichedPatients.length,
-      newPatients:        enrichedPatients.filter(p => p.status === "NEW").length,
-      returningPatients:  enrichedPatients.filter(p => p.status === "RETURNING").length,
-      activePatients:     enrichedPatients.filter(p => p.activityStatus === "ACTIVE").length,
-      inactivePatients:   enrichedPatients.filter(p => p.activityStatus === "INACTIVE").length,
+      // ✅ All patient counts reflect active patients only
+      totalPatients:     enrichedPatients.length,
+      newPatients:       enrichedPatients.filter(p => p.status === "NEW").length,
+      returningPatients: enrichedPatients.filter(p => p.status === "RETURNING").length,
+      activePatients:    enrichedPatients.filter(p => p.activityStatus === "ACTIVE").length,
+      inactivePatients:  enrichedPatients.filter(p => p.activityStatus === "INACTIVE").length,
 
       todayTotal,
       attendedToday,
