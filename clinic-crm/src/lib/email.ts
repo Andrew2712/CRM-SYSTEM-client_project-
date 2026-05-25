@@ -52,7 +52,7 @@ export function bookingConfirmedPatientHtml(
       <p>Your appointment has been successfully booked.</p>
       <table style="border-collapse:collapse;width:100%">
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Doctor</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb">Dr. ${doctorName}</td></tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">${doctorName}</td></tr>
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Date &amp; Time (IST)</strong></td>
             <td style="padding:8px;border:1px solid #e5e7eb">${dateTimeIST}</td></tr>
       </table>

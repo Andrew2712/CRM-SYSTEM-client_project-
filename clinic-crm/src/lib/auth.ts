@@ -4,7 +4,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
 export const authOptions: NextAuthOptions = {
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: 8 * 60 * 60, // 8 hours
+  },
   pages: { signIn: "/auth/login" },
   providers: [
     CredentialsProvider({
@@ -14,30 +17,31 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        console.log("=== AUTH DEBUG ===");
-        console.log("Email:", credentials?.email);
-        console.log("Password length:", credentials?.password?.length);
-
-        if (!credentials?.email || !credentials?.password) {
-          console.log("FAIL: missing credentials");
-          return null;
-        }
+        if (!credentials?.email || !credentials?.password) return null;
 
         try {
+          // ── Staff user ──────────────────────────────────────────────────
           const staffUser = await prisma.user.findUnique({
             where: { email: credentials.email },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              passwordHash: true,
+              isActive: true,
+            },
           });
 
-          console.log("Staff found:", !!staffUser);
-
           if (staffUser) {
-            console.log("Hash:", staffUser.passwordHash?.slice(0, 20));
+            if (!staffUser.isActive) return null;
+
             const valid = await bcrypt.compare(
               credentials.password,
               staffUser.passwordHash
             );
-            console.log("Password valid:", valid);
             if (!valid) return null;
+
             return {
               id: staffUser.id,
               name: staffUser.name,
@@ -46,18 +50,25 @@ export const authOptions: NextAuthOptions = {
             };
           }
 
+          // ── Patient user ────────────────────────────────────────────────
           const patient = await prisma.patient.findFirst({
             where: { email: credentials.email },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              passwordHash: true,
+              isActive: true,
+            },
           });
 
-          console.log("Patient found:", !!patient);
           if (!patient || !patient.passwordHash) return null;
+          if (!patient.isActive) return null;
 
           const valid = await bcrypt.compare(
             credentials.password,
             patient.passwordHash
           );
-          console.log("Patient password valid:", valid);
           if (!valid) return null;
 
           return {
@@ -68,7 +79,7 @@ export const authOptions: NextAuthOptions = {
             patientId: patient.id,
           };
         } catch (err) {
-          console.error("AUTH EXCEPTION:", err);
+          console.error("[Auth] authorize exception:", (err as Error).message);
           return null;
         }
       },
@@ -78,21 +89,15 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
-        if ((user as any).patientId) {
-          token.patientId = (user as any).patientId;
-        }
+        token.role = user.role;
+        if (user.patientId) token.patientId = user.patientId;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        if (token.patientId) {
-          (session.user as any).patientId = token.patientId as string;
-        }
-      }
+      session.user.id = token.id;
+      session.user.role = token.role;
+      if (token.patientId) session.user.patientId = token.patientId;
       return session;
     },
   },

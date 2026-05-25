@@ -1,3 +1,31 @@
+//
+// prisma/schema.prisma
+//
+// ─── WHAT CHANGED ────────────────────────────────────────────────────────────
+//
+// Added to the Appointment model:
+//
+//   @@index([doctorId, startTime, endTime])
+//
+// Why not @@unique([doctorId, startTime])?
+// ─────────────────────────────────────────
+// A unique constraint on (doctorId, startTime) would only block exact
+// duplicate start times. It would NOT catch overlapping sessions with different
+// start times (e.g. 10:00–11:00 vs 10:30–11:30). The overlap is enforced at
+// the application layer inside the Serializable transaction; the composite
+// index just makes that overlap query fast.
+//
+// The index covers:
+//   WHERE doctorId = $1
+//     AND startTime < $newEnd      ← range scan on startTime
+//     AND endTime   > $newStart    ← covered by the index
+//     AND status IN (...)
+//
+// Additionally added @@index([doctorId, status]) to speed up availability
+// lookups that filter by doctor + status.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -28,7 +56,7 @@ model User {
   reassignmentRequests  DoctorReassignmentRequest[] @relation("ReassignmentRequester")
   reassignmentsFrom     DoctorReassignmentRequest[] @relation("ReassignmentFrom")
   reassignmentsTo       DoctorReassignmentRequest[] @relation("ReassignmentTo")
-  expenses              Expense[] 
+  expenses              Expense[]
 }
 
 model Patient {
@@ -74,6 +102,15 @@ model Appointment {
   visit                PatientVisit?
   notes                String?
   reassignmentRequests DoctorReassignmentRequest[]
+
+  // ── Booking-conflict indexes ──────────────────────────────────────────────
+  // Composite index on (doctorId, startTime, endTime) makes the overlap query
+  // in findOverlappingAppointment() an efficient index range scan rather than
+  // a sequential table scan.
+  @@index([doctorId, startTime, endTime])
+  // Quick lookup by doctor + status for availability checks
+  @@index([doctorId, status])
+  // ─────────────────────────────────────────────────────────────────────────
 }
 
 model PatientVisit {
@@ -264,21 +301,21 @@ enum PaymentMode {
 // ─── Audit Log ────────────────────────────────────────────────────────────────
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String
-  userName   String
-  userRole   String
-  action     AuditAction
-  entity     String           // e.g. "Appointment", "Expense", "Patient"
-  entityId   String
-  description String          // human-readable summary
-  oldValue   Json?            // snapshot before change
-  newValue   Json?            // snapshot after change
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
+  id          String      @id @default(cuid())
+  userId      String
+  userName    String
+  userRole    String
+  action      AuditAction
+  entity      String
+  entityId    String
+  description String
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
 
-  user       User     @relation(fields: [userId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([entity, entityId])

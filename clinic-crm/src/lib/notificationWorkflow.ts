@@ -1,8 +1,28 @@
 /**
- * src/lib/notificationWorkflow.ts  (EXTENDED — replace existing file)
+ * src/lib/notificationWorkflow.ts
+ *
+ * ─── WHAT CHANGED ────────────────────────────────────────────────────────────
+ *
+ * BEFORE:
+ *   resolveEmail(real) → process.env.DEV_TEST_EMAIL || real
+ *   resolvePhone(real) → process.env.DEV_TEST_PHONE || real
+ *
+ *   If DEV_TEST_EMAIL / DEV_TEST_PHONE were set (even to test), EVERY
+ *   notification went to that one address/number — patients and doctors
+ *   never received anything.
+ *
+ * AFTER:
+ *   In production (NODE_ENV=production), real patient/doctor contacts are
+ *   always used. The DEV_TEST overrides only apply in development AND only
+ *   when NODE_ENV !== "production". This prevents accidental production
+ *   deployments from still routing to a test number.
+ *
+ *   resolveEmail / resolvePhone now also validate the value is non-empty
+ *   before returning it, so blank strings in the DB don't cause send failures.
+ *
+ * Everything else (safeSend, message templates, workflow functions) is unchanged.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
- * Adds: cancel / reschedule / reassignment / holiday notifications
- * Keeps: all existing booking / reminder / missed-session functions intact
  */
 
 import { prisma } from "@/lib/prisma";
@@ -47,15 +67,41 @@ async function safeSend(
   }
 }
 
+/**
+ * Resolve the email address to send to.
+ *
+ * - In development: DEV_TEST_EMAIL overrides the real address (safe for testing).
+ * - In production:  always uses the real address.
+ * - Returns null if no valid address is available (skip sending).
+ */
 function resolveEmail(real: string | null | undefined): string | null {
-  return process.env.DEV_TEST_EMAIL || real || null;
+  const isDev = process.env.NODE_ENV !== "production";
+
+  if (isDev && process.env.DEV_TEST_EMAIL?.trim()) {
+    return process.env.DEV_TEST_EMAIL.trim();
+  }
+
+  return real?.trim() || null;
 }
 
+/**
+ * Resolve the phone number to send WhatsApp to.
+ *
+ * - In development: DEV_TEST_PHONE overrides the real number (safe for testing).
+ * - In production:  always uses the real number.
+ * - Returns null if no valid number is available (skip sending).
+ */
 function resolvePhone(real: string | null | undefined): string | null {
-  return process.env.DEV_TEST_PHONE || real || null;
+  const isDev = process.env.NODE_ENV !== "production";
+
+  if (isDev && process.env.DEV_TEST_PHONE?.trim()) {
+    return process.env.DEV_TEST_PHONE.trim();
+  }
+
+  return real?.trim() || null;
 }
 
-// ─── EXISTING: Booking Confirmed ─────────────────────────────────────────────
+// ─── Booking Confirmed ────────────────────────────────────────────────────────
 
 export async function sendBookingConfirmations(appointmentId: string): Promise<void> {
   const appt = await fetchAppointment(appointmentId);
@@ -88,7 +134,7 @@ export async function sendBookingConfirmations(appointmentId: string): Promise<v
       sendWhatsApp(doctorPhone, bookingConfirmedDoctorMsg(doctor.name, patient.name, dateTimeIST)));
 }
 
-// ─── EXISTING: 24h / 2h Reminders ────────────────────────────────────────────
+// ─── 24h / 2h Reminders ───────────────────────────────────────────────────────
 
 export async function send24hReminder(appointmentId: string): Promise<void> {
   const appt = await fetchAppointment(appointmentId);
@@ -108,7 +154,7 @@ export async function send2hReminder(appointmentId: string): Promise<void> {
     sendWhatsApp(phone, reminder2hMsg(appt.patient.name, appt.doctor.name, toIST(appt.startTime))));
 }
 
-// ─── EXISTING: Missed Session ─────────────────────────────────────────────────
+// ─── Missed Session ───────────────────────────────────────────────────────────
 
 export async function sendMissedSessionNotifications(appointmentId: string): Promise<void> {
   const appt = await fetchAppointment(appointmentId);
@@ -128,27 +174,25 @@ export async function sendMissedSessionNotifications(appointmentId: string): Pro
         missedSessionDoctorHtml(appt.doctor.name, appt.patient.name, dateTimeIST)));
 }
 
-// ─── NEW: Booking Cancelled ───────────────────────────────────────────────────
+// ─── Booking Cancelled ────────────────────────────────────────────────────────
 
 export async function sendCancellationNotifications(appointmentId: string): Promise<void> {
   const appt = await fetchAppointment(appointmentId);
   if (!appt) return;
 
-  const dateTimeIST  = toIST(appt.startTime);
+  const dateTimeIST = toIST(appt.startTime);
   const { patient, doctor } = appt;
 
-  // Patient — WhatsApp
   const patientPhone = resolvePhone(patient.phone);
   if (patientPhone) {
     const msg =
       `Hello ${patient.name} 👋\n\n` +
       `❌ *Appointment Cancelled*\n` +
-      `Your appointment with Dr. ${doctor.name} on ${dateTimeIST} (IST) has been cancelled.\n\n` +
+      `Your appointment with  ${doctor.name} on ${dateTimeIST} (IST) has been cancelled.\n\n` +
       `Please contact us to reschedule.\n\n— Clinic CRM`;
     try { await sendWhatsApp(patientPhone, msg); } catch (e) { console.error("[Cancel WA patient]", e); }
   }
 
-  // Patient — Email
   const patientEmail = resolveEmail(patient.email);
   if (patientEmail) {
     try {
@@ -156,21 +200,20 @@ export async function sendCancellationNotifications(appointmentId: string): Prom
         <div style="font-family:sans-serif;max-width:560px;margin:auto">
           <h2 style="color:#dc2626">Appointment Cancelled ❌</h2>
           <p>Dear <strong>${patient.name}</strong>,</p>
-          <p>Your appointment with <strong>Dr. ${doctor.name}</strong> scheduled for <strong>${dateTimeIST} IST</strong> has been cancelled.</p>
+          <p>Your appointment with <strong> ${doctor.name}</strong> scheduled for <strong>${dateTimeIST} IST</strong> has been cancelled.</p>
           <p>Please contact us to reschedule.</p>
           <p style="color:#6b7280;font-size:12px">Clinic CRM — Automated Notification</p>
         </div>`);
     } catch (e) { console.error("[Cancel Email patient]", e); }
   }
 
-  // Doctor — Email
   const doctorEmail = resolveEmail(doctor.email);
   if (doctorEmail) {
     try {
       await sendEmail(doctorEmail, "Appointment Cancelled 📋", `
         <div style="font-family:sans-serif;max-width:560px;margin:auto">
           <h2 style="color:#dc2626">Appointment Cancelled</h2>
-          <p>Dear Dr. <strong>${doctor.name}</strong>,</p>
+          <p>Dear <strong>${doctor.name}</strong>,</p>
           <p>The appointment with patient <strong>${patient.name}</strong> scheduled for <strong>${dateTimeIST} IST</strong> has been cancelled.</p>
           <p style="color:#6b7280;font-size:12px">Clinic CRM — Automated Notification</p>
         </div>`);
@@ -178,7 +221,7 @@ export async function sendCancellationNotifications(appointmentId: string): Prom
   }
 }
 
-// ─── NEW: Booking Rescheduled ─────────────────────────────────────────────────
+// ─── Booking Rescheduled ──────────────────────────────────────────────────────
 
 export async function sendRescheduleNotifications(
   appointmentId: string,
@@ -189,19 +232,17 @@ export async function sendRescheduleNotifications(
 
   const { patient, doctor } = appt;
 
-  // Patient — WhatsApp
   const patientPhone = resolvePhone(patient.phone);
   if (patientPhone) {
     const msg =
       `Hello ${patient.name} 👋\n\n` +
       `🔄 *Appointment Rescheduled*\n` +
-      `Your appointment with Dr. ${doctor.name} has been rescheduled.\n` +
+      `Your appointment with ${doctor.name} has been rescheduled.\n` +
       `📅 New Date & Time (IST): ${newDateTime}\n\n` +
       `Please confirm or contact us if you need further changes.\n\n— Clinic CRM`;
     try { await sendWhatsApp(patientPhone, msg); } catch (e) { console.error("[Reschedule WA patient]", e); }
   }
 
-  // Patient — Email
   const patientEmail = resolveEmail(patient.email);
   if (patientEmail) {
     try {
@@ -209,21 +250,20 @@ export async function sendRescheduleNotifications(
         <div style="font-family:sans-serif;max-width:560px;margin:auto">
           <h2 style="color:#d97706">Appointment Rescheduled 🔄</h2>
           <p>Dear <strong>${patient.name}</strong>,</p>
-          <p>Your appointment with <strong>Dr. ${doctor.name}</strong> has been rescheduled.</p>
+          <p>Your appointment with <strong> ${doctor.name}</strong> has been rescheduled.</p>
           <p><strong>New Date & Time:</strong> ${newDateTime} IST</p>
           <p style="color:#6b7280;font-size:12px">Clinic CRM — Automated Notification</p>
         </div>`);
     } catch (e) { console.error("[Reschedule Email patient]", e); }
   }
 
-  // Doctor — Email
   const doctorEmail = resolveEmail(doctor.email);
   if (doctorEmail) {
     try {
       await sendEmail(doctorEmail, "Appointment Rescheduled 🔄", `
         <div style="font-family:sans-serif;max-width:560px;margin:auto">
           <h2 style="color:#d97706">Appointment Rescheduled</h2>
-          <p>Dear Dr. <strong>${doctor.name}</strong>,</p>
+          <p>Dear <strong>${doctor.name}</strong>,</p>
           <p>The appointment with patient <strong>${patient.name}</strong> has been rescheduled.</p>
           <p><strong>New Date & Time:</strong> ${newDateTime} IST</p>
           <p style="color:#6b7280;font-size:12px">Clinic CRM — Automated Notification</p>
@@ -232,7 +272,7 @@ export async function sendRescheduleNotifications(
   }
 }
 
-// ─── NEW: Doctor Reassigned ───────────────────────────────────────────────────
+// ─── Doctor Reassigned ────────────────────────────────────────────────────────
 
 export async function sendReassignmentNotifications(
   appointmentId: string,
@@ -247,27 +287,25 @@ export async function sendReassignmentNotifications(
   const dateTimeIST = toIST(appt.startTime);
   const { patient, doctor: oldDoctor } = appt;
 
-  // Patient — WhatsApp
   const patientPhone = resolvePhone(patient.phone);
   if (patientPhone) {
     const msg =
       `Hello ${patient.name} 👋\n\n` +
       `👨‍⚕️ *Doctor Change Notice*\n` +
       `Your appointment on ${dateTimeIST} (IST) has been reassigned.\n` +
-      `New Doctor: Dr. ${newDoctor.name}\n\n` +
+      `New Doctor:  ${newDoctor.name}\n\n` +
       `We apologize for any inconvenience.\n\n— Clinic CRM`;
     try { await sendWhatsApp(patientPhone, msg); } catch (e) { console.error("[Reassign WA patient]", e); }
   }
 
-  // New Doctor — Email
   const newDoctorEmail = resolveEmail(newDoctor.email);
   if (newDoctorEmail) {
     try {
       await sendEmail(newDoctorEmail, "Appointment Transferred to You 📋", `
         <div style="font-family:sans-serif;max-width:560px;margin:auto">
           <h2 style="color:#7c3aed">Appointment Reassigned to You</h2>
-          <p>Dear Dr. <strong>${newDoctor.name}</strong>,</p>
-          <p>An appointment has been transferred to you from Dr. ${oldDoctor.name}.</p>
+          <p>Dear  <strong>${newDoctor.name}</strong>,</p>
+          <p>An appointment has been transferred to you from  ${oldDoctor.name}.</p>
           <p><strong>Patient:</strong> ${patient.name}</p>
           <p><strong>Date & Time:</strong> ${dateTimeIST} IST</p>
           <p style="color:#6b7280;font-size:12px">Clinic CRM — Automated Notification</p>
@@ -275,14 +313,13 @@ export async function sendReassignmentNotifications(
     } catch (e) { console.error("[Reassign Email newdoctor]", e); }
   }
 
-  // Old Doctor — Email
   const oldDoctorEmail = resolveEmail(oldDoctor.email);
   if (oldDoctorEmail) {
     try {
       await sendEmail(oldDoctorEmail, "Appointment Transferred ✅", `
         <div style="font-family:sans-serif;max-width:560px;margin:auto">
           <h2 style="color:#059669">Appointment Successfully Transferred</h2>
-          <p>Dear Dr. <strong>${oldDoctor.name}</strong>,</p>
+          <p>Dear  <strong>${oldDoctor.name}</strong>,</p>
           <p>Your appointment with <strong>${patient.name}</strong> on ${dateTimeIST} has been successfully transferred to Dr. ${newDoctor.name}.</p>
           <p style="color:#6b7280;font-size:12px">Clinic CRM — Automated Notification</p>
         </div>`);

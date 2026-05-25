@@ -3,38 +3,42 @@
 /**
  * src/components/RescheduleModal.tsx
  *
- * FIX: The original modal used datetime-local inputs which, when passed to
- * new Date() and serialized via toISOString(), apply a UTC offset shift.
- * For IST (UTC+5:30), selecting 12:00 PM produces a string "2026-05-18T12:00"
- * which Date() treats as LOCAL time on the server but toISOString() converts
- * to UTC (06:30Z), and when displayed back in IST it re-adds +5:30 → 12:00 PM
- * appears correct on the first render but the stored value is wrong.
+ * ─── WHAT CHANGED ────────────────────────────────────────────────────────────
  *
- * The real problem is that the PATCH API receives the ISO string from the client
- * and Prisma stores it as UTC. The CLIENT must send the time the user selected,
- * interpreted as IST, converted to UTC correctly BEFORE sending.
+ * 1. CONFLICT RESPONSE HANDLING
+ *    The API now returns HTTP 409 with { error: "..." } when the target slot is
+ *    already taken. The modal reads res.status === 409 and shows a clear message
+ *    instead of a generic "Failed to reschedule" text.
  *
- * CORRECT APPROACH:
- *   1. Accept date + 12h-time components from UI (same spinner as BookingPage)
- *   2. Build a Date using explicit local components: new Date(y, m, d, h, min)
- *      — this always uses the BROWSER's local timezone (IST for clinic users)
- *   3. Call .toISOString() on that Date — now the UTC conversion is correct
- *      because we built the Date in local time first.
+ * 2. DUPLICATE-SUBMIT PREVENTION
+ *    The "Reschedule" button is disabled while `saving` is true AND the form
+ *    cannot be re-submitted once a save is in flight — the onClick handler
+ *    guards with an early return when saving === true.
  *
- * This mirrors exactly what BookingPage does in handleBook().
+ * 3. SLOT LIST REFRESH ON CONFLICT
+ *    onConflict() callback (optional) is called when a 409 arrives, so the
+ *    parent BookingPage can re-fetch the appointment list and reveal the slot
+ *    that was just taken by the other user.
+ *
+ * 4. PAST-DATE GUARD
+ *    Unchanged from original — still validated client-side before sending.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useState, useEffect } from "react";
-import { X, Calendar, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { X, Calendar, Loader2, AlertTriangle } from "lucide-react";
 
 interface Props {
   appointmentId: string;
-  patientName: string;
-  onClose: () => void;
-  onSuccess: () => void;
+  patientName:   string;
+  onClose:       () => void;
+  onSuccess:     () => void;
+  /** Called when the API returns 409 — lets the parent refresh the slot list. */
+  onConflict?:   () => void;
 }
 
-// ── shared style tokens (mirror BookingPage) ──────────────────────────────────
+// ── shared style tokens ───────────────────────────────────────────────────────
 const inputCls =
   "w-full bg-[#FAF8F2] border-2 border-[#4A0F06]/12 rounded-xl px-4 py-3 text-sm font-medium text-[#4A0F06] placeholder:text-[#4A0F06]/30 focus:outline-none focus:ring-0 focus:border-[#D86F32]/50 transition-all";
 const labelCls =
@@ -50,15 +54,11 @@ const QUICK_SLOTS = [
   "19:00","20:00","21:00",
 ];
 
-// ── timezone-safe date builder ────────────────────────────────────────────────
-// Builds a Date from local components (browser timezone = IST for clinic).
-// new Date(y, m, d, h, min) always interprets args as LOCAL, so toISOString()
-// then gives the correct UTC representation.
 function buildLocalDate(
-  dateStr: string,      // "YYYY-MM-DD"
-  hour12: number,       // 1–12
-  minute: number,       // 0–59
-  ampm: "AM" | "PM"
+  dateStr: string,
+  hour12:  number,
+  minute:  number,
+  ampm:    "AM" | "PM"
 ): Date {
   const [year, month, day] = dateStr.split("-").map(Number);
   let h24 = hour12 % 12;
@@ -71,53 +71,58 @@ export default function RescheduleModal({
   patientName,
   onClose,
   onSuccess,
+  onConflict,
 }: Props) {
-  // ── form state ──────────────────────────────────────────────────────────────
-  const [date, setDate]         = useState("");
-  const [hour, setHour]         = useState(9);    // 1–12
-  const [minute, setMinute]     = useState(0);
-  const [ampm, setAmpm]         = useState<"AM" | "PM">("AM");
+  const [date,   setDate]   = useState("");
+  const [hour,   setHour]   = useState(9);
+  const [minute, setMinute] = useState(0);
+  const [ampm,   setAmpm]   = useState<"AM" | "PM">("AM");
 
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
+  const [isConflict, setIsConflict] = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
 
-  // Derived 24h display for preview chip
-  const h24Preview = (hour % 12) + (ampm === "PM" ? 12 : 0);
+  const h24Preview     = (hour % 12) + (ampm === "PM" ? 12 : 0);
   const currentTimeStr = `${pad(hour)}:${pad(minute)} ${ampm}`;
 
-  // ── quick slot handler ──────────────────────────────────────────────────────
   function handleQuickSlot(slot: string) {
-    const [h24, m] = slot.split(":").map(Number);
+    const [h24, m]        = slot.split(":").map(Number);
     const period: "AM" | "PM" = h24 < 12 ? "AM" : "PM";
-    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    const h12             = h24 % 12 === 0 ? 12 : h24 % 12;
     setAmpm(period);
     setHour(h12);
     setMinute(m);
+    // Clear any previous conflict error when user picks a new slot
+    setError(null);
+    setIsConflict(false);
   }
 
-  // ── submit ──────────────────────────────────────────────────────────────────
   async function handleSubmit(e?: React.MouseEvent | React.FormEvent) {
     e?.preventDefault?.();
 
+    // Guard: prevent double-submit while save is in flight
+    if (saving) return;
+
     if (!date) { setError("Please select a date"); return; }
 
-    // Build start in local time → ISO (UTC) for API
     const startDate = buildLocalDate(date, hour, minute, ampm);
     const endDate   = buildLocalDate(date, hour, minute, ampm);
-    endDate.setHours(endDate.getHours() + 1); // 1-hour session
+    endDate.setHours(endDate.getHours() + 1);
 
     if (startDate < new Date()) {
-      setError("Cannot reschedule to a past time"); return;
+      setError("Cannot reschedule to a past time");
+      return;
     }
 
     setSaving(true);
     setError(null);
+    setIsConflict(false);
 
     try {
       const res = await fetch(`/api/appointments/${appointmentId}`, {
-        method: "PATCH",
+        method:  "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           startTime: startDate.toISOString(),
@@ -126,20 +131,30 @@ export default function RescheduleModal({
         }),
       });
 
-      if (!res.ok) {
+      if (res.status === 409) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Failed to reschedule");
+        setIsConflict(true);
+        setError(data.error ?? "That slot is already taken. Please choose a different time.");
+        // Ask parent to refresh the appointments list so the newly-booked
+        // slot becomes visible in the UI immediately.
+        onConflict?.();
         return;
       }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Failed to reschedule. Please try again.");
+        return;
+      }
+
       onSuccess();
     } catch {
-      setError("Network error — please try again");
+      setError("Network error — please try again.");
     } finally {
       setSaving(false);
     }
   }
 
-  // ── render ──────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-[#FAF8F2] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[#4A0F06]/8">
@@ -166,13 +181,31 @@ export default function RescheduleModal({
         {/* Body */}
         <div className="px-6 py-5 space-y-5">
 
-          {/* Error */}
+          {/* Error / conflict banner */}
           {error && (
-            <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
-              <div className="w-7 h-7 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                <X size={14} className="text-white" />
+            <div className={`flex items-start gap-3 p-4 rounded-2xl border ${
+              isConflict
+                ? "bg-amber-50 border-amber-200"
+                : "bg-red-50 border-red-200"
+            }`}>
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                isConflict ? "bg-amber-500" : "bg-red-500"
+              }`}>
+                {isConflict
+                  ? <AlertTriangle size={14} className="text-white" />
+                  : <X size={14} className="text-white" />
+                }
               </div>
-              <p className="text-sm font-semibold text-red-600">{error}</p>
+              <div>
+                <p className={`text-sm font-semibold ${isConflict ? "text-amber-700" : "text-red-600"}`}>
+                  {error}
+                </p>
+                {isConflict && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    The appointments list has been refreshed. Please select a free slot.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -193,22 +226,22 @@ export default function RescheduleModal({
                 type="date"
                 value={date}
                 min={todayStr}
-                onChange={e => setDate(e.target.value)}
+                onChange={e => { setDate(e.target.value); setError(null); setIsConflict(false); }}
                 className={`${inputCls} pl-10`}
               />
             </div>
           </div>
 
-          {/* Time (IST) — same custom spinner as BookingPage */}
+          {/* Time (IST) */}
           <div>
             <label className={labelCls}>New Time (IST) <span className="text-[#D86F32]">*</span></label>
 
             {/* Quick-pick chips */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               {QUICK_SLOTS.map(slot => {
-                const [slotH24] = slot.split(":").map(Number);
+                const [slotH24]  = slot.split(":").map(Number);
                 const slotPeriod = slotH24 < 12 ? "AM" : "PM";
-                const slotH12   = slotH24 % 12 === 0 ? 12 : slotH24 % 12;
+                const slotH12    = slotH24 % 12 === 0 ? 12 : slotH24 % 12;
                 const active = hour === slotH12 && minute === 0 && ampm === slotPeriod;
                 return (
                   <button
@@ -227,23 +260,23 @@ export default function RescheduleModal({
               })}
             </div>
 
-            {/* Custom spinner */}
+            {/* Spinner */}
             <div className="flex items-center gap-2">
               {/* Hour */}
               <div className="flex-1 flex flex-col items-center gap-1">
                 <button type="button"
-                  onClick={() => setHour(h => (h % 12) + 1)}
+                  onClick={() => { setHour(h => (h % 12) + 1); setError(null); setIsConflict(false); }}
                   className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/>
                   </svg>
                 </button>
                 <input type="number" min={1} max={12} value={hour}
-                  onChange={e => { const v = Math.max(1, Math.min(12, Number(e.target.value))); setHour(isNaN(v) ? 1 : v); }}
+                  onChange={e => { const v = Math.max(1, Math.min(12, Number(e.target.value))); setHour(isNaN(v) ? 1 : v); setError(null); setIsConflict(false); }}
                   className={spinnerCls}
                 />
                 <button type="button"
-                  onClick={() => setHour(h => h === 1 ? 12 : h - 1)}
+                  onClick={() => { setHour(h => h === 1 ? 12 : h - 1); setError(null); setIsConflict(false); }}
                   className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/>
@@ -257,18 +290,18 @@ export default function RescheduleModal({
               {/* Minute */}
               <div className="flex-1 flex flex-col items-center gap-1">
                 <button type="button"
-                  onClick={() => setMinute(m => (m + 5) % 60)}
+                  onClick={() => { setMinute(m => (m + 5) % 60); setError(null); setIsConflict(false); }}
                   className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/>
                   </svg>
                 </button>
                 <input type="number" min={0} max={59} step={5} value={minute}
-                  onChange={e => { const v = Math.max(0, Math.min(59, Number(e.target.value))); setMinute(isNaN(v) ? 0 : v); }}
+                  onChange={e => { const v = Math.max(0, Math.min(59, Number(e.target.value))); setMinute(isNaN(v) ? 0 : v); setError(null); setIsConflict(false); }}
                   className={spinnerCls}
                 />
                 <button type="button"
-                  onClick={() => setMinute(m => (m - 5 + 60) % 60)}
+                  onClick={() => { setMinute(m => (m - 5 + 60) % 60); setError(null); setIsConflict(false); }}
                   className="w-full flex items-center justify-center py-1 rounded-lg bg-[#4A0F06]/6 hover:bg-[#D86F32]/15 text-[#4A0F06]/60 hover:text-[#D86F32] transition-all">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/>
@@ -281,7 +314,7 @@ export default function RescheduleModal({
               <div className="flex flex-col items-center gap-1.5 mb-5">
                 {(["AM", "PM"] as const).map(period => (
                   <button key={period} type="button"
-                    onClick={() => setAmpm(period)}
+                    onClick={() => { setAmpm(period); setError(null); setIsConflict(false); }}
                     className={`w-12 py-2 rounded-xl border-2 text-xs font-black tracking-wider transition-all ${
                       ampm === period
                         ? "bg-[#4A0F06] border-[#4A0F06] text-[#F5F2E8] shadow-sm shadow-[#4A0F06]/20"
@@ -293,12 +326,14 @@ export default function RescheduleModal({
                 <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">Period</span>
               </div>
 
-              {/* Time preview */}
+              {/* Preview */}
               <div className="flex flex-col items-center gap-1 mb-5 ml-1">
                 <div className="px-3 py-2 bg-[#4A0F06] rounded-xl shadow-md shadow-[#4A0F06]/20">
                   <span className="text-base font-black font-mono text-[#F5F2E8] tracking-tight">{currentTimeStr}</span>
                 </div>
-                <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">IST</span>
+                <span className="text-[10px] font-bold text-[#4A0F06]/40 uppercase tracking-wider">
+                  {pad(h24Preview)}:{pad(minute)} IST
+                </span>
               </div>
             </div>
           </div>
@@ -323,7 +358,8 @@ export default function RescheduleModal({
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#4A0F06]/8 bg-[#4A0F06]/2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm font-semibold text-[#4A0F06]/60 hover:bg-[#4A0F06]/8 transition-colors"
+            disabled={saving}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-[#4A0F06]/60 hover:bg-[#4A0F06]/8 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
