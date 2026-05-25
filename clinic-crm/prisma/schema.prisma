@@ -28,7 +28,7 @@ model User {
   reassignmentRequests  DoctorReassignmentRequest[] @relation("ReassignmentRequester")
   reassignmentsFrom     DoctorReassignmentRequest[] @relation("ReassignmentFrom")
   reassignmentsTo       DoctorReassignmentRequest[] @relation("ReassignmentTo")
-  expenses            Expense[]
+  expenses              Expense[] 
 }
 
 model Patient {
@@ -107,16 +107,6 @@ model Notification {
   sentAt        DateTime?
   status        NotificationStatus  @default(PENDING)
   appointment   Appointment         @relation(fields: [appointmentId], references: [id])
-}
-
-model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String
-  action     String
-  entityType String
-  entityId   String
-  createdAt  DateTime @default(now())
-  actor      User     @relation(fields: [actorId], references: [id])
 }
 
 model InAppNotification {
@@ -269,4 +259,39 @@ enum PaymentMode {
   UPI
   CARD
   BANK_TRANSFER
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  userName   String
+  userRole   String
+  action     AuditAction
+  entity     String           // e.g. "Appointment", "Expense", "Patient"
+  entityId   String
+  description String          // human-readable summary
+  oldValue   Json?            // snapshot before change
+  newValue   Json?            // snapshot after change
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  PASSWORD_RESET
+  ROLE_CHANGE
 }
