@@ -57,6 +57,7 @@ model User {
   reassignmentsFrom     DoctorReassignmentRequest[] @relation("ReassignmentFrom")
   reassignmentsTo       DoctorReassignmentRequest[] @relation("ReassignmentTo")
   expenses              Expense[]
+  waitlistEntries       Waitlist[]
 }
 
 model Patient {
@@ -84,6 +85,7 @@ model Patient {
 
   appointments         Appointment[]
   visits               PatientVisit[]
+  waitlistEntries      Waitlist[]
 }
 
 model Appointment {
@@ -245,6 +247,9 @@ enum InAppNotifType {
   DOCTOR_REASSIGNED
   HOLIDAY_REQUEST
   REASSIGNMENT_REQUEST
+  WAITLIST_SLOT_AVAILABLE
+  WAITLIST_BOOKED
+  WAITLIST_EXPIRED
 }
 
 enum HolidayRequestStatus {
@@ -257,6 +262,38 @@ enum ReassignmentStatus {
   PENDING
   ACCEPTED
   REJECTED
+}
+
+// ─── Waitlist ─────────────────────────────────────────────────────────────────
+
+model Waitlist {
+  id            String         @id @default(cuid())
+  patientId     String
+  doctorId      String
+  preferredDate DateTime
+  preferredTime String?
+  status        WaitlistStatus @default(PENDING)
+  priority      Int            @default(0)
+  notes         String?
+  notifiedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  patient       Patient        @relation(fields: [patientId], references: [id])
+  doctor        User           @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId, status, preferredDate])
+  @@index([patientId])
+  @@index([status])
+}
+
+enum WaitlistStatus {
+  PENDING
+  NOTIFIED
+  ACCEPTED
+  EXPIRED
+  CANCELLED
 }
 
 // ─── Expense Tracker ──────────────────────────────────────────────────────────
