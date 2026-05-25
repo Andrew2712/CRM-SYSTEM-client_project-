@@ -1,164 +1,102 @@
 /**
- * src/app/api/doctor-reassignment/[id]/route.ts
- * PATCH /api/doctor-reassignment/:id → accept / reject (DOCTOR or ADMIN)
- *
- * ─── WHAT CHANGED ───────────────────────────────────────────────────────────
- *
- * BEFORE: When a doctor ACCEPTED a reassignment request the code did a simple
- *   prisma.appointment.update({ data: { doctorId: toDoctorId } })
- *   with NO check that the receiving doctor is free at that time.
- *
- * Scenario that was possible:
- *   Appointment A (10:00–11:00) is assigned to Dr. X, who already has
- *   Appointment B (10:00–11:00). Accepting the reassignment would silently
- *   stack two patients on Dr. X at the same hour.
- *
- * AFTER: The acceptance path runs inside a Serializable transaction that first
- *   calls findOverlappingAppointment() for the receiving doctor, excluding the
- *   appointment being moved (it currently belongs to another doctor, so it
- *   does not conflict with itself in the target doctor's calendar).
- *
+ * src/app/api/doctor-reassignment/route.ts  (NEW FILE)
  * ─────────────────────────────────────────────────────────────────────────────
+ * GET  /api/doctor-reassignment  → list requests
+ * POST /api/doctor-reassignment  → create reassignment request (ADMIN / RECEPTIONIST)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/rbac";
 import { createInAppNotification, notifyAdminAndReceptionist } from "@/lib/inAppNotifications";
-import { sendReassignmentNotifications } from "@/lib/notificationWorkflow";
-import { findOverlappingAppointment } from "@/lib/bookingConflict";
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// ── GET ──────────────────────────────────────────────────────────────────────
+
+export async function GET(_req: NextRequest) {
   let session;
   try { session = await requireAuth(); } catch (e) { return e as NextResponse; }
 
-  const { id } = await params;
+  const where =
+    session.user.role === "DOCTOR"
+      ? {
+          OR: [
+            { toDoctorId: session.user.id },
+            { fromDoctorId: session.user.id },
+          ],
+        }
+      : {};
 
-  let body: { status: "ACCEPTED" | "REJECTED" };
+  const requests = await prisma.doctorReassignmentRequest.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: {
+      appointment: {
+        include: { patient: true },
+      },
+      fromDoctor: { select: { id: true, name: true } },
+      toDoctor:   { select: { id: true, name: true } },
+      requestedBy: { select: { id: true, name: true } },
+    },
+  });
+
+  return NextResponse.json(requests);
+}
+
+// ── POST ─────────────────────────────────────────────────────────────────────
+
+export async function POST(req: NextRequest) {
+  let session;
+  try { session = await requireAuth(); } catch (e) { return e as NextResponse; }
+
+  if (!["ADMIN", "RECEPTIONIST"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  let body: { appointmentId: string; toDoctorId: string; notes?: string };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!["ACCEPTED", "REJECTED"].includes(body.status)) {
-    return NextResponse.json({ error: "status must be ACCEPTED or REJECTED" }, { status: 400 });
+  if (!body.appointmentId || !body.toDoctorId) {
+    return NextResponse.json({ error: "appointmentId and toDoctorId are required" }, { status: 400 });
   }
 
   try {
-    const existing = await prisma.doctorReassignmentRequest.findUnique({
-      where: { id },
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: body.appointmentId },
+      include: { patient: true, doctor: true },
+    });
+
+    if (!appointment)
+      return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+
+    const request = await prisma.doctorReassignmentRequest.create({
+      data: {
+        appointmentId:     body.appointmentId,
+        requestedByUserId: session.user.id,
+        fromDoctorId:      appointment.doctorId,
+        toDoctorId:        body.toDoctorId,
+        notes:             body.notes,
+      },
       include: {
+        fromDoctor: { select: { id: true, name: true } },
+        toDoctor:   { select: { id: true, name: true } },
         appointment: { include: { patient: true } },
-        fromDoctor:  { select: { id: true, name: true } },
-        toDoctor:    { select: { id: true, name: true } },
       },
     });
 
-    if (!existing)
-      return NextResponse.json({ error: "Request not found" }, { status: 404 });
-
-    if (
-      session.user.role === "DOCTOR" &&
-      existing.toDoctorId !== session.user.id
-    ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // ── REJECTED path — no slot change, no conflict possible ───────────────
-    if (body.status === "REJECTED") {
-      const updated = await prisma.doctorReassignmentRequest.update({
-        where: { id },
-        data:  { status: "REJECTED" },
-      });
-
-      notifyAdminAndReceptionist(
-        "REASSIGNMENT_REQUEST",
-        "Reassignment Rejected",
-        `Dr. ${existing.toDoctor.name} rejected the reassignment request`,
-        id
-      ).catch(console.error);
-
-      return NextResponse.json(updated);
-    }
-
-    // ── ACCEPTED path — must check that receiving doctor is free ───────────
-    const appt = existing.appointment;
-
-    let updated;
-    try {
-      updated = await prisma.$transaction(
-        async (tx) => {
-          // The appointment currently belongs to fromDoctor so it will NOT
-          // appear in toDoctorId's appointments — no need to exclude it.
-          const conflict = await findOverlappingAppointment(tx, {
-            doctorId:     existing.toDoctorId,
-            newStartTime: appt.startTime,
-            newEndTime:   appt.endTime,
-          });
-
-          if (conflict) {
-            throw Object.assign(
-              new Error("SLOT_CONFLICT"),
-              { code: "SLOT_CONFLICT" }
-            );
-          }
-
-          await tx.appointment.update({
-            where: { id: existing.appointmentId },
-            data:  { doctorId: existing.toDoctorId },
-          });
-
-          return tx.doctorReassignmentRequest.update({
-            where: { id },
-            data:  { status: "ACCEPTED" },
-          });
-        },
-        { isolationLevel: "Serializable", timeout: 8000 }
-      );
-    } catch (err: unknown) {
-      const e = err as { code?: string };
-
-      if (e?.code === "SLOT_CONFLICT") {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              `Dr. ${existing.toDoctor.name} already has a booking at that time. ` +
-              "The reassignment cannot be accepted.",
-          },
-          { status: 409 }
-        );
-      }
-
-      throw err; // re-throw for the outer catch
-    }
-
-    // ── Post-commit notifications ──────────────────────────────────────────
-    sendReassignmentNotifications(existing.appointmentId, existing.toDoctorId).catch(console.error);
-
-    notifyAdminAndReceptionist(
-      "DOCTOR_REASSIGNED",
-      "Doctor Reassignment Accepted",
-      `Dr. ${existing.toDoctor.name} accepted the reassignment for ${existing.appointment.patient.name}`,
-      existing.appointmentId
-    ).catch(console.error);
-
+    // Notify the target doctor
     createInAppNotification(
-      existing.fromDoctorId,
-      "DOCTOR_REASSIGNED",
-      "Reassignment Accepted",
-      `Dr. ${existing.toDoctor.name} will cover ${existing.appointment.patient.name}'s appointment`,
-      existing.appointmentId
+      body.toDoctorId,
+      "REASSIGNMENT_REQUEST",
+      "Reassignment Request",
+      `You have been requested to take over ${appointment.patient.name}'s appointment from Dr. ${appointment.doctor.name}`,
+      request.id
     ).catch(console.error);
 
-    return NextResponse.json(updated);
-
-  } catch (err: unknown) {
-    if ((err as { code?: string }).code === "P2025")
-      return NextResponse.json({ error: "Request not found" }, { status: 404 });
-    console.error("[PATCH /api/doctor-reassignment/[id]] error:", err);
-    return NextResponse.json({ error: "Failed to update reassignment" }, { status: 500 });
+    return NextResponse.json(request, { status: 201 });
+  } catch (err) {
+    console.error("[POST /api/doctor-reassignment] error:", err);
+    return NextResponse.json({ error: "Failed to create reassignment request" }, { status: 500 });
   }
 }
