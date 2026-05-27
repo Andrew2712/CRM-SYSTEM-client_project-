@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
-const PROD_DOMAIN = process.env.NEXT_PUBLIC_APP_URL ?? "https://your-app.vercel.app";
+const PROD_DOMAIN =
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://your-app.vercel.app";
 
 const securityHeaders = [
   {
@@ -35,7 +36,7 @@ const securityHeaders = [
       `style-src 'self' 'unsafe-inline'`,
       `img-src 'self' data: blob:`,
       `font-src 'self'`,
-      `connect-src 'self' ${PROD_DOMAIN} https://*.vercel.app`,  // ← restored
+      `connect-src 'self' ${PROD_DOMAIN} https://*.vercel.app`,
       `form-action 'self'`,
       `frame-ancestors 'none'`,
       `object-src 'none'`,
@@ -45,9 +46,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,  // ← add this
-  },
   async headers() {
     return [
       {
@@ -56,7 +54,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  experimental: {},
 };
 
 export default nextConfig;
