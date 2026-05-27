@@ -1,5 +1,5 @@
 "use client";
-
+import Image from "next/image";
 /**
  * src/app/dashboard/layout.tsx
  *
@@ -168,11 +168,13 @@ function SidebarContent({
     
     {/* Logo */}
     <div className="w-19 h-19 rounded-2xl overflow-hidden border border-[#5A1F14]/20 shadow-md bg-white flex items-center justify-center flex-shrink-0">
-      <img
-        src="/logo.png"
-        alt="Vyayama Logo"
-        className="w-full h-full object-cover"
-      />
+      <Image
+  src="/logo.png"
+  alt="Vyayama Logo"
+  width={76}
+  height={76}
+  className="w-full h-full object-cover"
+/>
     </div>
 
     {/* Text */}

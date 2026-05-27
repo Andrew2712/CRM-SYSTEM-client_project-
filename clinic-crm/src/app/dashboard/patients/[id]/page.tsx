@@ -1,6 +1,6 @@
 // src/app/dashboard/patients/[id]/page.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -76,7 +76,7 @@ export default function PatientProfile() {
   const canEditProfile = ["ADMIN", "RECEPTIONIST"].includes(role);
   const [editOpen, setEditOpen] = useState(false);
 
-  async function loadPatient() {
+  const loadPatient = useCallback(async () => {
     const res = await fetch(`/api/patients/${params.id}`, { credentials: "include" });
     if (!res.ok) { setLoading(false); return; }
     const data = await res.json();
@@ -84,9 +84,9 @@ export default function PatientProfile() {
     setTotalSessions(data.totalSessionsPlanned ?? 0);
     setPhase(data.phase && PHASES[data.phase] ? data.phase : null);
     setLoading(false);
-  }
+  }, [params.id]);
 
-  useEffect(() => { loadPatient(); }, [params.id]);
+  useEffect(() => { loadPatient(); }, [loadPatient]);
 
   async function saveChanges() {
     setSaving(true);

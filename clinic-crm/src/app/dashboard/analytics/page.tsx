@@ -448,13 +448,13 @@ function AppointmentsModal({ type, appointments, onClose }: {
   const [page,   setPage]   = useState(1);
   const PER_PAGE = 10;
 
-  const statusMap: Record<NonNullable<ModalType>, string[]> = {
-    booked:      ["CONFIRMED", "ATTENDED", "MISSED", "CANCELLED", "RESCHEDULED"],
-    cancelled:   ["CANCELLED"],
-    rescheduled: ["RESCHEDULED"],
-    missed:      ["MISSED"],
-    conducted:   ["ATTENDED"],
-  };
+  const statusMap: Record<NonNullable<ModalType>, string[]> = useMemo(() => ({
+  booked:      ["CONFIRMED", "ATTENDED", "MISSED", "CANCELLED", "RESCHEDULED"],
+  cancelled:   ["CANCELLED"],
+  rescheduled: ["RESCHEDULED"],
+  missed:      ["MISSED"],
+  conducted:   ["ATTENDED"],
+}), []);
   const titles: Record<NonNullable<ModalType>, string> = {
     booked:      "All Booked Sessions",
     cancelled:   "Cancelled Sessions",
@@ -464,22 +464,22 @@ function AppointmentsModal({ type, appointments, onClose }: {
   };
 
   const filtered = useMemo(() => {
-    if (!type) return [];
-    let list = appointments.filter(a => statusMap[type].includes(a.status));
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(a =>
-        a.patient.name.toLowerCase().includes(q) ||
-        a.doctor.name.toLowerCase().includes(q) ||
-        a.patient.patientCode.toLowerCase().includes(q)
-      );
-    }
+  if (!type) return [];
+  let list = appointments.filter(a => statusMap[type].includes(a.status));
+  if (search) {
+    const q = search.toLowerCase();
+    list = list.filter(a =>
+      a.patient.name.toLowerCase().includes(q) ||
+      a.doctor.name.toLowerCase().includes(q) ||
+      a.patient.patientCode.toLowerCase().includes(q)
+    );
+  }
     return [...list].sort((a, b) => {
       if (sort === "date-desc") return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
       if (sort === "date-asc")  return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
       return a.patient.name.localeCompare(b.patient.name);
     });
-  }, [type, appointments, search, sort]);
+  }, [appointments, type, search, sort, statusMap]);
 
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);

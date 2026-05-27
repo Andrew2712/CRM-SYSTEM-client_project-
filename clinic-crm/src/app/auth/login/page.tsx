@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Image from "next/image"; 
 
 type View = "login" | "signup" | "forgot";
 
@@ -138,11 +139,13 @@ export default function AuthPage() {
         {/* Logo */}
         <div className="relative flex items-center gap-3">
           <div className="w-20 h-20 rounded-2xl overflow-hidden border border-[#5A1F14]/20 shadow-lg bg-white">
-            <img
-              src="/logo.png"
-              alt="Vyayama Logo"
-              className="w-full h-full object-cover"
-            />
+            <Image
+  src="/logo.png"
+  alt="Vyayama Logo"
+  width={80}
+  height={80}
+  className="w-full h-full object-cover"
+/>
           </div>
           <div>
             <p className="text-2xl font-black text-[#EAE6DC] leading-tight tracking-tight">
@@ -255,7 +258,7 @@ export default function AuthPage() {
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-3 mb-8">
             <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center overflow-hidden">
-              <img src="/logo.png" alt="Vyayama Logo" className="w-full h-full object-cover" />
+              <Image src="/logo.png" alt="Vyayama Logo" width={36} height={36} className="w-full h-full object-cover" />
             </div>
             <p className="text-[#EAE6DC] font-extrabold text-lg">Vyayama Physio</p>
           </div>

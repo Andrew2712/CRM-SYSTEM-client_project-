@@ -1,5 +1,5 @@
 "use client";
-
+import Image from "next/image";
 /**
  * src/app/patient/layout.tsx
  * Patient portal layout — mirrors the staff dashboard visual design
@@ -44,7 +44,7 @@ function SidebarContent({
       <div className="px-5 py-5 border-b border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-16 h-16 rounded-2xl overflow-hidden border border-[#5A1F14]/20 shadow-md bg-white flex items-center justify-center flex-shrink-0">
-            <img src="/logo.png" alt="Vyayama Logo" className="w-full h-full object-cover" />
+            <Image src="/logo.png" alt="Vyayama Logo" width={64} height={64} className="w-full h-full object-cover" />
           </div>
           <div>
             <p className="text-xl font-black text-[#EAE6DC] leading-tight tracking-tight">Vyayama-Physio</p>

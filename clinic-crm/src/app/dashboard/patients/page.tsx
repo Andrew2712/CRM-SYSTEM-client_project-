@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+
 
 // ─── Brand Theme ──────────────────────────────────────────────────────────────
 // primary: #4A0F06  secondary: #5C1408  accent: #D86F32
@@ -195,7 +195,9 @@ export default function PatientsPage() {
   const [deleting,      setDeleting]      = useState(false);
   const [credentialsModal, setCredentialsModal] = useState<{ username: string; defaultPassword: string } | null>(null);
 
-  async function loadPatients() {
+  // ── wrapped in useCallback so useEffect deps are satisfied ──────────────────
+
+  const loadPatients = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -207,11 +209,11 @@ export default function PatientsPage() {
       const data = JSON.parse(text);
       const sorted = Array.isArray(data) ? data.sort((a: Patient, b: Patient) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
       setPatients(sorted);
-    } catch (e) { setPatients([]); }
+    } catch { setPatients([]); }
     setLoading(false);
-  }
+  }, [search, statusFilter]);
 
-  async function loadAllPatients() {
+  const loadAllPatients = useCallback(async () => {
     try {
       const res = await fetch(`/api/patients`, { credentials: "include" });
       const text = await res.text();
@@ -219,10 +221,12 @@ export default function PatientsPage() {
       const data = JSON.parse(text);
       setAllPatients(Array.isArray(data) ? data.sort((a: Patient, b: Patient) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : []);
     } catch {}
-  }
+  }, []);
 
-  useEffect(() => { loadPatients(); }, [search, statusFilter]);
-  useEffect(() => { loadAllPatients(); }, []);
+  useEffect(() => { loadPatients(); }, [loadPatients]);
+  useEffect(() => { loadAllPatients(); }, [loadAllPatients]);
+
+  // ────────────────────────────────────────────────────────────────────────────
 
   async function handleExport() {
     setExporting(true);
