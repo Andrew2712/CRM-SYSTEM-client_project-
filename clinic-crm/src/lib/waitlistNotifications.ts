@@ -28,11 +28,21 @@ type WaitlistEntry = {
 
 // ─── Dev overrides ────────────────────────────────────────────────────────────
 
+// ✅ AFTER (production always uses real contact):
 function resolveEmail(real: string | null | undefined): string | null {
-  return process.env.DEV_TEST_EMAIL || real || null;
+  const isDev = process.env.NODE_ENV !== "production";
+  if (isDev && process.env.DEV_TEST_EMAIL?.trim()) {
+    return process.env.DEV_TEST_EMAIL.trim();
+  }
+  return real?.trim() || null;
 }
+
 function resolvePhone(real: string | null | undefined): string | null {
-  return process.env.DEV_TEST_PHONE || real || null;
+  const isDev = process.env.NODE_ENV !== "production";
+  if (isDev && process.env.DEV_TEST_PHONE?.trim()) {
+    return process.env.DEV_TEST_PHONE.trim();
+  }
+  return real?.trim() || null;
 }
 
 // ─── Main notification sender ─────────────────────────────────────────────────
@@ -127,7 +137,7 @@ export async function sendWaitlistBookingConfirmed(
     const msg =
       `Hello ${patient.name} 👋\n\n` +
       `✅ *Your waitlist booking is confirmed!*\n\n` +
-      `Dr. ${doctor.name}\n📅 ${displayDate}\n\n` +
+      ` ${doctor.name}\n📅 ${displayDate}\n\n` +
       `We'll see you then!\n\n— Vyayama Physio`;
     try { await sendWhatsApp(patientPhone, msg); } catch { /* best-effort */ }
   }

@@ -1,16 +1,20 @@
 /**
  * src/app/api/cron/reminders/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Vercel Cron Job — runs every hour (configured in vercel.json)
- * Processes CONFIRMED appointments and sends:
- *   • 24-hour reminder (WhatsApp → Patient)
- *   • 2-hour reminder  (WhatsApp → Patient)
+ * Cron endpoint — triggered hourly by GitHub Actions (free, reliable).
  *
- * Security: Protected by Authorization: Bearer CRON_SECRET header.
- *           Vercel automatically sends this when invoking cron routes.
+ * Why GitHub Actions instead of Vercel Cron?
+ *   Vercel Hobby plan limits cron to daily. GitHub Actions runs every hour
+ *   for free, which is required to catch both the 24h and 2h reminder windows.
  *
- * Timing: Vercel cron is NOT exact — may fire a few minutes early/late.
- *   ✅ Uses RANGE windows, never strict equality.
+ * Duplicate prevention:
+ *   Uses reminder24hSent / reminder2hSent flags on the Appointment model.
+ *   Each reminder is only sent once — even if the cron fires multiple times
+ *   in the same window due to drift or retries.
+ *
+ * Security:
+ *   Authorization: Bearer <CRON_SECRET> header — set identically in
+ *   Vercel env vars and GitHub Actions secrets.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -19,61 +23,87 @@ import { prisma } from "@/lib/prisma";
 import { hoursUntil } from "@/lib/timezone";
 import { send24hReminder, send2hReminder } from "@/lib/notificationWorkflow";
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
-  // ─── Security: Verify CRON_SECRET ───────────────────────────────────────
+  // ── Auth ────────────────────────────────────────────────────────────────
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    console.warn("[Cron] Unauthorized request");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  console.log("[Cron] Reminder job started at", new Date().toISOString());
+  const startedAt = new Date().toISOString();
+  console.log("[Cron] Reminder job started at", startedAt);
 
-  // ─── Fetch all CONFIRMED upcoming appointments ───────────────────────────
+  // ── Fetch CONFIRMED appointments in the next 26h ─────────────────────────
+  // Fetch a slightly wider window (26h) than our largest reminder (24h) to
+  // account for GitHub Actions firing a few minutes early.
   const appointments = await prisma.appointment.findMany({
     where: {
-      status: "CONFIRMED",
+      status:    "CONFIRMED",
       startTime: {
-        // Only fetch appointments in the future (within the next 26 hours)
-        // to avoid processing already-passed appointments
         gte: new Date(),
         lte: new Date(Date.now() + 26 * 60 * 60 * 1000),
       },
     },
     include: {
       patient: true,
-      doctor: true,
+      doctor:  true,
     },
   });
 
-  console.log(`[Cron] Processing ${appointments.length} CONFIRMED appointments`);
+  console.log(`[Cron] Found ${appointments.length} upcoming CONFIRMED appointments`);
 
   const results = {
-    processed: 0,
+    processed:   0,
     reminder24h: 0,
-    reminder2h: 0,
-    errors: 0,
+    reminder2h:  0,
+    skipped:     0,   // already sent
+    errors:      0,
   };
 
   for (const appt of appointments) {
     const diffHours = hoursUntil(appt.startTime);
 
     try {
-      // ── STEP 2: 24-hour reminder ─────────────────────────────────────────
-      // Window: more than 23h but at most 24h away (safe range for hourly cron)
+      // ── 24h window ───────────────────────────────────────────────────────
       if (diffHours <= 24 && diffHours > 23) {
-        console.log(`[Cron] Sending 24h reminder for appointment ${appt.id}`);
-        await send24hReminder(appt.id);
-        results.reminder24h++;
+        if (appt.reminder24hSent) {
+          console.log(`[Cron] 24h reminder already sent for ${appt.id} — skipping`);
+          results.skipped++;
+        } else {
+          console.log(`[Cron] Sending 24h reminder for ${appt.id} (${diffHours.toFixed(2)}h away)`);
+          await send24hReminder(appt.id);
+
+          // Mark as sent — prevents duplicates if cron fires again in this window
+          await prisma.appointment.update({
+            where: { id: appt.id },
+            data:  { reminder24hSent: true },
+          });
+
+          results.reminder24h++;
+        }
       }
 
-      // ── STEP 3: 2-hour reminder ──────────────────────────────────────────
-      // Window: more than 1h but at most 2h away (safe range for hourly cron)
+      // ── 2h window ────────────────────────────────────────────────────────
       else if (diffHours <= 2 && diffHours > 1) {
-        console.log(`[Cron] Sending 2h reminder for appointment ${appt.id}`);
-        await send2hReminder(appt.id);
-        results.reminder2h++;
+        if (appt.reminder2hSent) {
+          console.log(`[Cron] 2h reminder already sent for ${appt.id} — skipping`);
+          results.skipped++;
+        } else {
+          console.log(`[Cron] Sending 2h reminder for ${appt.id} (${diffHours.toFixed(2)}h away)`);
+          await send2hReminder(appt.id);
+
+          await prisma.appointment.update({
+            where: { id: appt.id },
+            data:  { reminder2hSent: true },
+          });
+
+          results.reminder2h++;
+        }
       }
 
       results.processed++;
@@ -83,11 +113,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  console.log("[Cron] Reminder job completed:", results);
+  console.log("[Cron] Job completed:", results);
 
   return NextResponse.json({
-    ok: true,
-    timestamp: new Date().toISOString(),
+    ok:        true,
+    startedAt,
+    finishedAt: new Date().toISOString(),
     ...results,
   });
 }

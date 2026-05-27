@@ -87,7 +87,6 @@ model Patient {
   visits               PatientVisit[]
   waitlistEntries      Waitlist[]
 }
-
 model Appointment {
   id                   String                      @id @default(cuid())
   patientId            String
@@ -105,12 +104,15 @@ model Appointment {
   notes                String?
   reassignmentRequests DoctorReassignmentRequest[]
 
+  // ── Reminder flags — prevent duplicate sends ──────────────────────────────
+  // Set to true after each reminder is dispatched. The cron job checks these
+  // before sending so re-runs within the same window are safe no-ops.
+  reminder24hSent      Boolean                     @default(false)
+  reminder2hSent       Boolean                     @default(false)
+  // ─────────────────────────────────────────────────────────────────────────
+
   // ── Booking-conflict indexes ──────────────────────────────────────────────
-  // Composite index on (doctorId, startTime, endTime) makes the overlap query
-  // in findOverlappingAppointment() an efficient index range scan rather than
-  // a sequential table scan.
   @@index([doctorId, startTime, endTime])
-  // Quick lookup by doctor + status for availability checks
   @@index([doctorId, status])
   // ─────────────────────────────────────────────────────────────────────────
 }

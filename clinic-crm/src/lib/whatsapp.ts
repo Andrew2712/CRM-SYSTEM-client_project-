@@ -1,138 +1,177 @@
 /**
  * src/lib/whatsapp.ts
- *
- * ─── WHAT CHANGED ────────────────────────────────────────────────────────────
- *
- * 1. PHONE NUMBER NORMALISATION
- *    Patient phones in the DB may be stored as "9876543210" (no country code),
- *    "+919876543210", or "919876543210". Twilio requires strict E.164 format
- *    (+[country][number]). normalizeIndianPhone() handles all three formats
- *    for Indian numbers (the clinic's primary market). Non-Indian numbers that
- *    already start with "+" are passed through unchanged.
- *
- * 2. DETAILED ERROR LOGGING
- *    Twilio errors now log the full error code and message so you can tell
- *    immediately whether a failure is:
- *      - 21408: permission to send to region not enabled
- *      - 21211: invalid 'To' phone number
- *      - 63007: sandbox opt-in required (the most common cause of silent failures)
- *      - 21606: WhatsApp-enabled number required on the 'From'
- *
- * 3. SANDBOX OPT-IN GUARD
- *    When the error is 63007 (recipient hasn't opted into sandbox), the error
- *    message tells you exactly how to fix it instead of silently swallowing it.
- *
- * ─── SANDBOX vs PRODUCTION ───────────────────────────────────────────────────
- *
- * SANDBOX (testing):
- *   TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
- *   Every recipient must first send "join <your-keyword>" to that number.
- *   Free-form text works fine once opted in.
- *
- * PRODUCTION (real patients):
- *   You need a Twilio-approved WhatsApp sender number.
- *   Go to: https://console.twilio.com/us1/develop/sms/senders/whatsapp-senders
- *   Apply for a WhatsApp Business sender. Once approved, set:
- *   TWILIO_WHATSAPP_NUMBER=whatsapp:+91XXXXXXXXXX
- *   Free-form text works for 24h after a patient messages you first.
- *   For outbound-only (clinic initiating), you need approved templates —
- *   see: https://www.twilio.com/docs/whatsapp/tutorial/send-whatsapp-notification-messages-templates
- *
- * ─────────────────────────────────────────────────────────────────────────────
+ * 
+ * Uses Meta WhatsApp Cloud API directly (not Twilio).
+ * Cheaper, faster approval, and you already have a WhatsApp Business account.
+ * 
+ * Required env vars:
+ *   META_WA_TOKEN          — Permanent system user token from Meta Business Manager
+ *   META_WA_PHONE_ID       — Phone Number ID from Meta WhatsApp Business dashboard
+ *   META_WA_TEMPLATE_*     — Template names (approved in Meta Business Manager)
  */
-
-import twilio from "twilio";
-
-const client = twilio(
-  process.env.TWILIO_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
 
 /**
  * Normalise a phone number to E.164 for Indian numbers.
- *
- * Handles:
- *   "9876543210"     → "+919876543210"
- *   "919876543210"   → "+919876543210"
- *   "+919876543210"  → "+919876543210"  (unchanged)
- *   "+1234567890"    → "+1234567890"    (non-Indian, passed through)
+ * Meta Cloud API requires E.164 WITHOUT the leading +
+ * e.g. "9876543210" → "919876543210"
  */
 export function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, ""); // strip everything except digits
+  const digits = raw.replace(/\D/g, "");
 
-  // Already has country code (starts with +)
-  if (raw.startsWith("+")) return raw;
+  if (raw.startsWith("+")) return digits; // strip the + for Meta API
 
-  // Indian mobile: 10 digits starting with 6–9
+  // 10-digit Indian mobile (starts with 6-9)
   if (digits.length === 10 && /^[6-9]/.test(digits)) {
-    return `+91${digits}`;
+    return `91${digits}`;
   }
 
-  // Indian mobile with country code prefix: 91 + 10 digits
+  // Already has 91 prefix: 12 digits starting with 91
   if (digits.length === 12 && digits.startsWith("91")) {
-    return `+${digits}`;
+    return digits;
   }
 
-  // Unknown format — prefix + and hope for the best; Twilio will error clearly
-  return `+${digits}`;
+  return digits;
 }
 
 /**
- * Send a WhatsApp message via Twilio.
+ * Send a free-form WhatsApp message via Meta Cloud API.
  *
- * @param to      Recipient phone — any reasonable format, auto-normalised
+ * IMPORTANT: Free-form messages can only be sent within the 24-hour
+ * customer service window (after the patient last messaged you).
+ * For outbound-initiated notifications (like booking confirmations
+ * to new patients), you MUST use approved message templates.
+ * See sendWhatsAppTemplate() below.
+ *
+ * @param to      Recipient phone — any reasonable Indian format
  * @param message Plain-text message body
  */
 export async function sendWhatsApp(to: string, message: string): Promise<void> {
-  const normalised  = normalizePhone(to);
-  const formattedTo = normalised.startsWith("whatsapp:") ? normalised : `whatsapp:${normalised}`;
-  const from        = process.env.TWILIO_WHATSAPP_NUMBER!;
+  const phoneId = process.env.META_WA_PHONE_ID;
+  const token = process.env.META_WA_TOKEN;
 
-  if (!from) {
-    throw new Error("TWILIO_WHATSAPP_NUMBER is not set in environment variables.");
+  if (!phoneId || !token) {
+    throw new Error(
+      "[WhatsApp] META_WA_PHONE_ID or META_WA_TOKEN is not set. " +
+      "Get these from Meta Business Manager → WhatsApp → API Setup."
+    );
   }
 
-  try {
-    const result = await client.messages.create({
-      from,
-      to: formattedTo,
-      body: message,
-    });
+  const normalised = normalizePhone(to);
+  if (!normalised || normalised.length < 10) {
+    console.warn(`[WhatsApp] Skipping invalid phone: "${to}"`);
+    return;
+  }
 
-    console.log(`[WhatsApp] Sent to ${formattedTo} | SID: ${result.sid} | Status: ${result.status}`);
-  } catch (err: unknown) {
-    const e = err as { code?: number; message?: string; status?: number };
+  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+  const body = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: normalised,
+    type: "text",
+    text: { preview_url: false, body: message },
+  };
 
-    // Provide actionable guidance for the most common errors
-    if (e?.code === 63007) {
-      console.error(
-        `[WhatsApp] ERROR 63007 — ${formattedTo} has not opted into the Twilio sandbox.\n` +
-        `Ask them to send "join <your-sandbox-keyword>" to ${from} first.\n` +
-        `In production, use an approved WhatsApp Business sender instead of the sandbox.`
-      );
-    } else if (e?.code === 21211) {
-      console.error(`[WhatsApp] ERROR 21211 — Invalid phone number: ${formattedTo}`);
-    } else if (e?.code === 21606) {
-      console.error(
-        `[WhatsApp] ERROR 21606 — The FROM number (${from}) is not WhatsApp-enabled.\n` +
-        `Check your TWILIO_WHATSAPP_NUMBER env var includes the whatsapp: prefix.`
-      );
-    } else if (e?.code === 21408) {
-      console.error(
-        `[WhatsApp] ERROR 21408 — Your Twilio account does not have permission to send to this region.\n` +
-        `Enable it at: https://console.twilio.com/us1/develop/sms/settings/geo-permissions`
-      );
-    } else {
-      console.error(`[WhatsApp] Failed to send to ${formattedTo}:`, e?.message ?? err);
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json() as {
+        messages?: { id: string }[];
+        error?: { message: string; code: number; error_subcode?: number };
+      };
+
+      if (!res.ok || data.error) {
+        const errMsg = data.error?.message ?? `HTTP ${res.status}`;
+        const code = data.error?.code;
+
+        // 130472 = Outside 24h window — must use template
+        if (code === 130472) {
+          console.warn(
+            `[WhatsApp] 130472 — ${normalised} is outside the 24h customer service window. ` +
+            `Use sendWhatsAppTemplate() for outbound-initiated messages.`
+          );
+          return; // Not retryable — template required
+        }
+
+        throw new Error(`Meta API error (${code}): ${errMsg}`);
+      }
+
+      const msgId = data.messages?.[0]?.id;
+      console.log(`[WhatsApp] Sent ✓ | to=${normalised} | msgId=${msgId} | attempt=${attempt}`);
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[WhatsApp] Attempt ${attempt}/3 failed for ${normalised}: ${lastError.message}`);
+      if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
     }
-
-    throw err; // re-throw so safeSend() can record it as FAILED
   }
+
+  throw new Error(`[WhatsApp] All 3 attempts failed for ${normalised}. Last: ${lastError?.message}`);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Message Templates
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Send an approved template message (for outbound-initiated notifications).
+ * Required for: booking confirmations, reminders, missed session alerts.
+ *
+ * @param to           Recipient phone
+ * @param templateName Approved template name in Meta Business Manager
+ * @param langCode     Template language code (default: "en")
+ * @param components   Template variable components (body parameters)
+ */
+export async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  langCode = "en",
+  components: object[] = []
+): Promise<void> {
+  const phoneId = process.env.META_WA_PHONE_ID;
+  const token = process.env.META_WA_TOKEN;
+
+  if (!phoneId || !token) {
+    throw new Error("[WhatsApp] META_WA_PHONE_ID or META_WA_TOKEN is not set.");
+  }
+
+  const normalised = normalizePhone(to);
+  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+  const body = {
+    messaging_product: "whatsapp",
+    to: normalised,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: langCode },
+      components,
+    },
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json() as { messages?: { id: string }[]; error?: { message: string } };
+
+  if (!res.ok || data.error) {
+    throw new Error(`[WhatsApp Template] Meta API error: ${data.error?.message ?? res.status}`);
+  }
+
+  console.log(`[WhatsApp Template] Sent ✓ | to=${normalised} | template=${templateName}`);
+}
+
+// ─── Message body builders (unchanged — used for free-form/session window) ────
 
 export function bookingConfirmedPatientMsg(
   patientName: string,
@@ -144,8 +183,8 @@ export function bookingConfirmedPatientMsg(
     `✅ *Appointment Confirmed!*\n` +
     `📋 Doctor: ${doctorName}\n` +
     `🕐 Date & Time (IST): ${dateTimeIST}\n\n` +
-    `Please arrive 10 minutes early. To reschedule, contact us at least 24 hours in advance.\n\n` +
-    `— Clinic CRM`
+    `Please arrive 10 minutes early.\n\n` +
+    `— Vyayama Physio`
   );
 }
 
@@ -159,7 +198,7 @@ export function bookingConfirmedDoctorMsg(
     `📅 *New Appointment Booked*\n` +
     `👤 Patient: ${patientName}\n` +
     `🕐 Date & Time (IST): ${dateTimeIST}\n\n` +
-    `— Clinic CRM`
+    `— Vyayama Physio`
   );
 }
 
@@ -171,10 +210,9 @@ export function reminder24hMsg(
   return (
     `Hello ${patientName} 👋\n\n` +
     `⏰ *Appointment Reminder — 24 Hours*\n` +
-    `Your appointment with ${doctorName} is scheduled for tomorrow.\n` +
+    `Your appointment with ${doctorName} is tomorrow.\n` +
     `🕐 Time (IST): ${dateTimeIST}\n\n` +
-    `Please be on time. Contact us if you need to reschedule.\n\n` +
-    `— Clinic CRM`
+    `— Vyayama Physio`
   );
 }
 
@@ -186,10 +224,9 @@ export function reminder2hMsg(
   return (
     `Hello ${patientName} 👋\n\n` +
     `⏰ *Appointment Reminder — 2 Hours*\n` +
-    `Your appointment with ${doctorName} is coming up soon!\n` +
+    `Your appointment with ${doctorName} is soon!\n` +
     `🕐 Time (IST): ${dateTimeIST}\n\n` +
-    `Please head over shortly. See you soon!\n\n` +
-    `— Clinic CRM`
+    `— Vyayama Physio`
   );
 }
 
@@ -202,7 +239,7 @@ export function missedSessionPatientMsg(
     `Hello ${patientName} 👋\n\n` +
     `❌ *Missed Appointment*\n` +
     `We noticed you missed your appointment with ${doctorName} at ${dateTimeIST} (IST).\n\n` +
-    `Please contact us to reschedule your session.\n\n` +
-    `— Clinic CRM`
+    `Please contact us to reschedule.\n\n` +
+    `— Vyayama Physio`
   );
 }
