@@ -79,7 +79,6 @@ const securityHeaders = [
       // Fonts: self only
       `font-src 'self'`,
       // API / WebSocket connections
-      `connect-src 'self' ${PROD_DOMAIN} https://*.vercel.app`,
       // Forms: self only
       `form-action 'self'`,
       // No framing ever
