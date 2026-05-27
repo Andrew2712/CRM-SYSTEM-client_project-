@@ -4,7 +4,7 @@
  */
 
 import { z } from "zod";
-
+import { PatientStatus } from "@prisma/client";
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export const SignupSchema = z.object({
@@ -63,6 +63,8 @@ export const CreatePatientSchema = z.object({
   phase: z.enum(["PHASE_1", "PHASE_2", "PHASE_3", "PHASE_4", "PHASE_5"]).optional(),
   purposeOfVisit: z.string().max(500).optional(),
   totalSessionsPlanned: z.number().int().min(0).default(0),
+  status: z.nativeEnum(PatientStatus).optional(),
+  
 });
 
 // ── Expenses ──────────────────────────────────────────────────────────────────

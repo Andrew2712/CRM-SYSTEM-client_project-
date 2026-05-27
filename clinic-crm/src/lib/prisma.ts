@@ -10,10 +10,8 @@ import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 
 // Required for Neon WebSocket connections in Node.js serverless environments.
-// In the browser/edge this is native; in Node.js we must polyfill.
-if (typeof WebSocket === "undefined") {
-  neonConfig.webSocketConstructor = ws;
-}
+// In the browser/edge, WebSocket is native; in Node.js we must polyfill.
+neonConfig.webSocketConstructor = ws;
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
