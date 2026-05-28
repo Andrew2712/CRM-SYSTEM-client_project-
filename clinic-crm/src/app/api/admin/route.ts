@@ -1,12 +1,33 @@
+/**
+ * src/app/api/admin/route.ts
+ * GET /api/admin — main dashboard stats
+ *
+ * FIX: Added role check after session check.
+ * Previously: any logged-in user (DOCTOR, RECEPTIONIST, PATIENT) could call
+ * this endpoint and read all patient counts, all appointments, full patient
+ * list, and weekly stats. Only ADMIN and RECEPTIONIST should have access.
+ */
+
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const ALLOWED_ROLES = ["ADMIN", "RECEPTIONIST"];
+
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // ── Auth check ────────────────────────────────────────────────────────────
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // ── Role check (FIX) ──────────────────────────────────────────────────────
+  // Previously missing — any authenticated user could read full admin data.
+  if (!ALLOWED_ROLES.includes(session.user.role))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  // ── Data queries (unchanged) ──────────────────────────────────────────────
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -33,16 +54,16 @@ export async function GET() {
     prisma.appointment.count({ where: { status: "MISSED", startTime: { gte: weekStart } } }),
     prisma.appointment.count({ where: { status: "CONFIRMED" } }),
     prisma.appointment.findMany({
-      where: { startTime: { gte: today, lt: tomorrow } },
+      where:   { startTime: { gte: today, lt: tomorrow } },
       orderBy: { startTime: "asc" },
       include: { patient: true, doctor: true },
     }),
     prisma.appointment.findMany({
-      take: 5,
+      take:    5,
       orderBy: { createdAt: "desc" },
       include: {
         patient: { include: { _count: { select: { appointments: true } } } },
-        doctor: true,
+        doctor:  true,
       },
     }),
     prisma.patient.findMany({
