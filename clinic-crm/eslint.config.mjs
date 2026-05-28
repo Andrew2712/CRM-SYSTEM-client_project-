@@ -10,10 +10,16 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
-  ...compat.extends("eslint-config-next/core-web-vitals.js"),
+  ...compat.extends("next/core-web-vitals"),
   {
     rules: {
+      // Apostrophes and quotes in JSX text — disabled globally.
+      // Next.js treats these as errors; we suppress them here and fix the
+      // source files directly as belt-and-suspenders.
       "react/no-unescaped-entities": "off",
+
+      // Missing useEffect / useMemo deps — leave as warn, not error.
+      "react-hooks/exhaustive-deps": "warn",
     },
   },
 ];

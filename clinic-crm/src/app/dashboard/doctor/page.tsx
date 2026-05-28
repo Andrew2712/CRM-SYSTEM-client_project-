@@ -516,7 +516,7 @@ export default function DoctorPage() {
             {activeToday.length > 0 && (
               <div className="bg-white rounded-2xl border border-[#DDD2C2] shadow-sm p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-bold text-[#2B1A14]">Today's Progress</span>
+                  <span className="text-sm font-bold text-[#2B1A14]">Today&apos;s Progress</span>
                   <span className="text-xs font-semibold text-[#7A685F]">
                     {attendedToday + missed.length} / {activeToday.length} done
                   </span>
@@ -541,7 +541,7 @@ export default function DoctorPage() {
             {/* Schedule card */}
             <div className="bg-white rounded-2xl border border-[#DDD2C2] shadow-sm overflow-hidden">
               <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E8E1D5] flex items-center justify-between">
-                <h2 className="text-sm font-bold text-[#2B1A14]">Today's Schedule</h2>
+                <h2 className="text-sm font-bold text-[#2B1A14]">Today&apos;s Schedule</h2>
                 <span className="text-xs font-semibold text-[#7A685F] bg-[#E8E1D5] px-2.5 py-1 rounded-full">
                   {activeToday.length} session{activeToday.length !== 1 ? "s" : ""}
                   {cancelledToday > 0 ? ` · ${cancelledToday} cancelled` : ""}
@@ -607,7 +607,7 @@ export default function DoctorPage() {
                         d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </div>
-                  <h2 className="text-sm font-bold text-[#2B1A14]">Today's Patients</h2>
+                  <h2 className="text-sm font-bold text-[#2B1A14]">Today&apos;s Patients</h2>
                 </div>
                 {appointments.length > 0 && (
                   <span className="text-xs font-semibold text-[#7A685F] bg-[#E8E1D5] px-2.5 py-1 rounded-full">

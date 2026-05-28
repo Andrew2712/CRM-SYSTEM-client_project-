@@ -639,7 +639,7 @@ function DeleteModal({ expense, onClose, onConfirm }: {
         </div>
         <h3 className="text-center font-bold text-gray-800 mb-1">Delete Expense</h3>
         <p className="text-center text-sm text-gray-500 mb-5">
-          Delete <span className="font-semibold text-gray-800">"{expense.title}"</span>? This cannot be undone.
+          Delete <span className="font-semibold text-gray-800">&ldquo;{expense.title}&rdquo;</span>? This cannot be undone.
         </p>
         <div className="flex gap-3">
           <button onClick={onClose}

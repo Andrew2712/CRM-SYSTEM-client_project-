@@ -323,7 +323,7 @@ function WeeklyTrend({
         style={{ borderColor: BRAND.border, background: `linear-gradient(135deg, ${BRAND.bg} 0%, white 100%)` }}>
         <div>
           <h2 className="text-sm sm:text-base font-bold text-slate-900">Weekly Session Trend</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Click a bar to see that day's sessions</p>
+          <p className="text-xs text-slate-400 mt-0.5">Click a bar to see that day&apos;s sessions</p>
         </div>
         <span className="text-xs font-bold px-3 py-1.5 rounded-xl border"
           style={{ background: BRAND.bg, borderColor: BRAND.border, color: BRAND.primary }}>
@@ -749,7 +749,7 @@ export default function AdminDashboard() {
             <div className="px-4 sm:px-6 py-4 sm:py-5 border-b flex-shrink-0 flex flex-wrap items-center justify-between gap-3"
               style={{ borderColor: BRAND.border }}>
               <div>
-                <h2 className="text-sm sm:text-base font-bold text-slate-900">Today's Sessions</h2>
+                <h2 className="text-sm sm:text-base font-bold text-slate-900">Today&apos;s Sessions</h2>
                 <p className="text-xs text-slate-400 mt-0.5">{todayTotal} total</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

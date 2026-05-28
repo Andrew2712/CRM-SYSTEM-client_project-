@@ -178,7 +178,7 @@ export default function NotificationBell() {
                 </span>
 
                 <span className="text-xs text-[#B7A79B]">
-                  You're all caught up!
+                  You&apos;re all caught up!
                 </span>
               </div>
             ) : (
