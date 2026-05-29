@@ -2,8 +2,12 @@
 
 /**
  * src/app/patient/reset-password/page.tsx
- * Secure password reset for authenticated patients.
- * Requires current password verification before updating.
+ *
+ * PRODUCTION FIX: Removed the default password hint that showed
+ * "FirstName_YYYY-MM-DD" as the default password pattern.
+ * An attacker who knows a patient's name and date of birth could use
+ * that hint to log into any patient account. The hint has been replaced
+ * with a generic "contact your clinic" message for first-time login help.
  */
 
 import { useState } from "react";
@@ -76,6 +80,7 @@ export default function PatientResetPassword() {
     setNewPassword("");
     setConfirmPassword("");
   }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-lg mx-auto">
 
@@ -104,13 +109,15 @@ export default function PatientResetPassword() {
             </p>
           </div>
 
-          {/* Default password hint */}
-          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200">
-            <p className="text-xs font-semibold text-amber-800">
-              💡 Your default password was set as: <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono">FirstName_YYYY-MM-DD</code>
+          {/* FIXED: Replaced default-password hint with generic support message.
+              The original hint ("FirstName_YYYY-MM-DD") let anyone who knew
+              a patient's name + DOB log into their account. */}
+          <div className="mb-6 p-4 rounded-xl bg-blue-50 border border-blue-200">
+            <p className="text-xs font-semibold text-blue-800">
+              🔒 First time logging in?
             </p>
-            <p className="text-xs text-amber-700 mt-1">
-              For example: <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono">John_2026-05-08</code>
+            <p className="text-xs text-blue-700 mt-1">
+              If you have not set a password yet, please contact the clinic reception desk and they will reset it for you.
             </p>
           </div>
 

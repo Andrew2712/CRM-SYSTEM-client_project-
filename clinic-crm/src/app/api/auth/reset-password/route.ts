@@ -1,19 +1,39 @@
 /**
- * POST /api/auth/reset-password
+ * src/app/api/auth/reset-password/route.ts
  * Admin-initiated password reset for staff and patients.
+ *
+ * PRODUCTION FIX: The original route read body.email and body.newPassword
+ * with a manual `if (!email || !newPassword)` check, skipping the shared
+ * Zod validation used everywhere else. This adds proper schema validation
+ * with the same password-strength rules applied on signup.
  */
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import { requireAuth, requireRole } from "@/lib/rbac";
 import { rateLimitAuth, rateLimitResponse } from "@/lib/rateLimit";
 import { auditLog } from "@/lib/audit";
+import { logger } from "@/lib/logger";
+
+// ── Validation schema ─────────────────────────────────────────────────────────
+const AdminResetPasswordSchema = z.object({
+  email: z.string().email("Invalid email address").toLowerCase(),
+  newPassword: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Must contain at least one uppercase letter")
+    .regex(/[0-9]/, "Must contain at least one number")
+    .regex(/[^A-Za-z0-9]/, "Must contain at least one special character"),
+});
 
 export async function POST(req: NextRequest) {
-  // ── Rate limit: 5 resets / 60s per IP (brute-force protection) ───────────
+  // ── Rate limit ─────────────────────────────────────────────────────────────
   const rl = await rateLimitAuth(req);
   if (!rl.success) return rateLimitResponse(rl);
 
+  // ── Auth gate ──────────────────────────────────────────────────────────────
   let session;
   try {
     session = await requireAuth();
@@ -22,11 +42,21 @@ export async function POST(req: NextRequest) {
     return err as NextResponse;
   }
 
-  const body = await req.json();
-  const { email, newPassword } = body;
+  // ── Zod validation ─────────────────────────────────────────────────────────
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  if (!email || !newPassword)
-    return NextResponse.json({ error: "Email and new password are required" }, { status: 400 });
+  const parsed = AdminResetPasswordSchema.safeParse(body);
+  if (!parsed.success) {
+    const messages = parsed.error.issues.map((e) => e.message).join("; ");
+    return NextResponse.json({ error: messages }, { status: 400 });
+  }
+
+  const { email, newPassword } = parsed.data;
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
 
@@ -39,8 +69,9 @@ export async function POST(req: NextRequest) {
       action:      "PASSWORD_RESET",
       entity:      "Staff",
       entityId:    staffUser.id,
-      description: `Admin reset password for staff "${staffUser.name}" (${staffUser.email})`,
+      description: `Admin reset password for staff "${staffUser.name}"`,
     });
+    logger.info("[ResetPassword] Staff password reset", { staffId: staffUser.id });
     return NextResponse.json({ success: true, type: "staff" });
   }
 
@@ -53,10 +84,14 @@ export async function POST(req: NextRequest) {
       action:      "PASSWORD_RESET",
       entity:      "Patient",
       entityId:    patient.id,
-      description: `Admin reset password for patient "${patient.name}" (${patient.email})`,
+      description: `Admin reset password for patient "${patient.name}"`,
     });
+    logger.info("[ResetPassword] Patient password reset", { patientId: patient.id });
     return NextResponse.json({ success: true, type: "patient" });
   }
 
-  return NextResponse.json({ error: "No account found with this email" }, { status: 404 });
+  return NextResponse.json(
+    { error: "No account found with this email" },
+    { status: 404 }
+  );
 }

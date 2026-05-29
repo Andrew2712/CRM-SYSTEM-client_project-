@@ -1,89 +1,53 @@
 /**
- * src/lib/inAppNotifications.ts  (NEW FILE)
- * ─────────────────────────────────────────────────────────────────────────────
- * Helpers to create in-app notifications for all CRM events.
- * Wraps prisma.inAppNotification.create in a non-throwing utility.
+ * src/lib/envValidation.ts
+ * Call validateEnv() at the top of any critical API route.
+ * Fails fast with a clear error rather than a cryptic runtime crash.
+ *
+ * PRODUCTION FIX: Added UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
+ * to the required list. Without Redis the rate limiter silently degrades to
+ * in-process memory — useless across Vercel's distributed serverless fleet.
  */
 
-import { prisma } from "@/lib/prisma";
-import { InAppNotifType } from "@prisma/client";
+type EnvConfig = {
+  required: string[];
+  optional: string[];
+};
 
-/** Create an in-app notification for a single user (non-throwing) */
-export async function createInAppNotification(
-  userId: string,
-  type: InAppNotifType,
-  title: string,
-  body: string,
-  entityId?: string
-): Promise<void> {
-  try {
-    await prisma.inAppNotification.create({
-      data: { userId, type, title, body, entityId },
-    });
-  } catch (err) {
-    console.error("[InApp] Failed to create notification:", err);
+const ENV: EnvConfig = {
+  required: [
+    "DATABASE_URL",
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
+    "RESEND_API_KEY",
+    "EMAIL_FROM",
+    "META_WA_TOKEN",
+    "META_WA_PHONE_ID",
+    "CRON_SECRET",
+    // Redis — required for distributed rate limiting across Vercel instances
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+  ],
+  optional: [
+    "DEV_TEST_EMAIL",
+    "DEV_TEST_PHONE",
+    "NODE_ENV",
+    "NEXT_PUBLIC_APP_URL",
+  ],
+};
+
+export function validateEnv(): void {
+  const missing: string[] = [];
+
+  for (const key of ENV.required) {
+    if (!process.env[key]?.trim()) {
+      missing.push(key);
+    }
   }
-}
 
-/** Broadcast an in-app notification to multiple users */
-export async function broadcastInAppNotification(
-  userIds: string[],
-  type: InAppNotifType,
-  title: string,
-  body: string,
-  entityId?: string
-): Promise<void> {
-  await Promise.all(
-    userIds.map((userId) =>
-      createInAppNotification(userId, type, title, body, entityId)
-    )
-  );
-}
-
-/** Notify all ADMIN and RECEPTIONIST users */
-export async function notifyAdminAndReceptionist(
-  type: InAppNotifType,
-  title: string,
-  body: string,
-  entityId?: string
-): Promise<void> {
-  try {
-    const staff = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "RECEPTIONIST"] } },
-      select: { id: true },
-    });
-    await broadcastInAppNotification(
-      staff.map((s) => s.id),
-      type,
-      title,
-      body,
-      entityId
+  if (missing.length > 0) {
+    throw new Error(
+      `[Env] Missing required environment variables: ${missing.join(", ")}. ` +
+      `Set these in Vercel Dashboard → Settings → Environment Variables.`
     );
-  } catch (err) {
-    console.error("[InApp] Failed to notify admin/receptionist:", err);
-  }
-}
-
-/** Notify all DOCTOR users */
-export async function notifyAllDoctors(
-  type: InAppNotifType,
-  title: string,
-  body: string,
-  entityId?: string
-): Promise<void> {
-  try {
-    const doctors = await prisma.user.findMany({
-      where: { role: "DOCTOR" },
-      select: { id: true },
-    });
-    await broadcastInAppNotification(
-      doctors.map((d) => d.id),
-      type,
-      title,
-      body,
-      entityId
-    );
-  } catch (err) {
-    console.error("[InApp] Failed to notify doctors:", err);
   }
 }

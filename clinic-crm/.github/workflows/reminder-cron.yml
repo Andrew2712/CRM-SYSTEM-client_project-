@@ -2,14 +2,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Hourly cron job — calls the Vyayama Physio reminder endpoint.
 #
-# Why GitHub Actions?
-#   Vercel Hobby plan only supports daily cron. GitHub Actions is free,
-#   reliable, and runs every hour — required to catch 24h and 2h windows.
+# PRODUCTION FIX: APP_URL was previously hardcoded to a Vercel preview URL.
+# It is now read from a GitHub Actions secret (APP_URL) so the workflow works
+# across environments without touching this file.
 #
-# Setup:
-#   1. Add CRON_SECRET to GitHub: Repo → Settings → Secrets → Actions
-#   2. Set the same CRON_SECRET in Vercel environment variables
-#   3. Update APP_URL below if your domain changes
+# Setup (one-time):
+#   1. Repo → Settings → Secrets and variables → Actions → New repository secret
+#   2. Add: CRON_SECRET  = (same value as your Vercel CRON_SECRET env var)
+#   3. Add: APP_URL      = https://your-production-domain.vercel.app
+#   4. Set the same CRON_SECRET in Vercel Dashboard → Settings → Env Variables
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: Appointment Reminder Cron
@@ -28,12 +29,24 @@ jobs:
     timeout-minutes: 5         # Kill if hanging — cron should complete in <60s
 
     steps:
+      - name: Validate secrets are set
+        run: |
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "❌ CRON_SECRET secret is not set in GitHub Actions"
+            exit 1
+          fi
+          if [ -z "${{ secrets.APP_URL }}" ]; then
+            echo "❌ APP_URL secret is not set in GitHub Actions"
+            exit 1
+          fi
+          echo "✅ Secrets are configured"
+
       - name: Call reminder endpoint
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: https://crm-system-client-project.vercel.app
+          APP_URL: ${{ secrets.APP_URL }}
         run: |
-          echo "Triggering reminder cron at $(date -u)"
+          echo "Triggering reminder cron at $(date -u) → $APP_URL"
 
           RESPONSE=$(curl -s -w "\n%{http_code}" \
             -X GET \
