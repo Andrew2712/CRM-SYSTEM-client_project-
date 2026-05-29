@@ -1,18 +1,14 @@
 import { prisma } from "@/lib/prisma";
 
-export async function createInAppNotification({
-  userId,
-  title,
-  message,
-  type = "INFO",
-  link,
-}: {
-  userId: string;
-  title: string;
-  message: string;
-  type?: "INFO" | "WARNING" | "ERROR" | "SUCCESS";
-  link?: string;
-}) {
+type NotificationType = "INFO" | "WARNING" | "ERROR" | "SUCCESS" | string;
+
+export async function createInAppNotification(
+  userId: string,
+  type: NotificationType,
+  title: string,
+  message: string,
+  link?: string
+) {
   try {
     return await prisma.notification.create({
       data: {
@@ -29,17 +25,12 @@ export async function createInAppNotification({
   }
 }
 
-export async function notifyAdminAndReceptionist({
-  title,
-  message,
-  type = "INFO",
-  link,
-}: {
-  title: string;
-  message: string;
-  type?: "INFO" | "WARNING" | "ERROR" | "SUCCESS";
-  link?: string;
-}) {
+export async function notifyAdminAndReceptionist(
+  type: NotificationType,
+  title: string,
+  message: string,
+  link?: string
+) {
   try {
     const staff = await prisma.user.findMany({
       where: {
@@ -51,7 +42,7 @@ export async function notifyAdminAndReceptionist({
 
     await Promise.all(
       staff.map((user) =>
-        createInAppNotification({ userId: user.id, title, message, type, link })
+        createInAppNotification(user.id, type, title, message, link)
       )
     );
   } catch (error) {

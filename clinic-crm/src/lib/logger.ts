@@ -9,7 +9,7 @@ function log(level: LogLevel, message: string, meta?: object) {
   } else console.log(entry);
 }
 
-const logger = {
+export const logger = {
   info: (message: string, meta?: object) => log("info", message, meta),
   warn: (message: string, meta?: object) => log("warn", message, meta),
   error: (message: string, meta?: object) => log("error", message, meta),
