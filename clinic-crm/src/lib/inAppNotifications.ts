@@ -6,17 +6,17 @@ export async function createInAppNotification(
   userId: string,
   type: NotificationType,
   title: string,
-  message: string,
-  link?: string
+  body: string,
+  entityId?: string
 ) {
   try {
-    return await prisma.notification.create({
+    return await prisma.inAppNotification.create({
       data: {
         userId,
-        title,
-        message,
         type,
-        link,
+        title,
+        body,
+        entityId,
         read: false,
       },
     });
@@ -28,8 +28,8 @@ export async function createInAppNotification(
 export async function notifyAdminAndReceptionist(
   type: NotificationType,
   title: string,
-  message: string,
-  link?: string
+  body: string,
+  entityId?: string
 ) {
   try {
     const staff = await prisma.user.findMany({
@@ -42,7 +42,7 @@ export async function notifyAdminAndReceptionist(
 
     await Promise.all(
       staff.map((user) =>
-        createInAppNotification(user.id, type, title, message, link)
+        createInAppNotification(user.id, type, title, body, entityId)
       )
     );
   } catch (error) {
