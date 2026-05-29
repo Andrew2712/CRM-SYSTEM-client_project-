@@ -1,10 +1,9 @@
 import { prisma } from "@/lib/prisma";
-
-type NotificationType = "INFO" | "WARNING" | "ERROR" | "SUCCESS" | string;
+import { InAppNotifType } from "@prisma/client";
 
 export async function createInAppNotification(
   userId: string,
-  type: NotificationType,
+  type: InAppNotifType,
   title: string,
   body: string,
   entityId?: string
@@ -26,7 +25,7 @@ export async function createInAppNotification(
 }
 
 export async function notifyAdminAndReceptionist(
-  type: NotificationType,
+  type: InAppNotifType,
   title: string,
   body: string,
   entityId?: string
