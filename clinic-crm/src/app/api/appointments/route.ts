@@ -1,7 +1,19 @@
 /**
  * src/app/api/appointments/route.ts
- * GET  /api/appointments — list (RBAC scoped)
+ * GET  /api/appointments — list (RBAC scoped, cursor-paginated)
  * POST /api/appointments — create (transaction-safe, overlap-protected)
+ *
+ * Pagination query params:
+ *   cursor   — the `id` of the last item from the previous page (optional)
+ *   limit    — items per page, 1–100, defaults to 50
+ *
+ * Response shape:
+ *   { data: Appointment[], nextCursor: string | null, hasMore: boolean }
+ *
+ * Client usage:
+ *   Page 1:  GET /api/appointments?limit=50
+ *   Page 2:  GET /api/appointments?limit=50&cursor=<lastId>
+ *   Stop when hasMore === false.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,10 +27,11 @@ import { auditAppointment } from "@/lib/audit";
 import { findOverlappingAppointment } from "@/lib/bookingConflict";
 import { validateEnv } from "@/lib/envValidation";
 
-// Allow this route up to 30s on Vercel Pro.
 export const maxDuration = 30;
 
 const MAX_RETRIES = 3;
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
 export async function GET(req: NextRequest) {
   const rl = await rateLimitRead(req);
@@ -28,26 +41,47 @@ export async function GET(req: NextRequest) {
   try { session = await requireAuth(); } catch (err) { return err as NextResponse; }
 
   try {
-    const from = req.nextUrl.searchParams.get("from");
-    const to   = req.nextUrl.searchParams.get("to");
+    const params   = req.nextUrl.searchParams;
+    const from     = params.get("from");
+    const to       = params.get("to");
+    const cursor   = params.get("cursor") ?? undefined;
+    const rawLimit = parseInt(params.get("limit") ?? String(DEFAULT_LIMIT), 10);
+    const limit    = Math.min(Math.max(isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1), MAX_LIMIT);
+
     const roleFilter = getAppointmentFilter(session);
 
-    const appointments = await prisma.appointment.findMany({
+    // Fetch limit+1 to determine whether a next page exists.
+    // orderBy includes `id` as a tiebreaker so the cursor position is always
+    // unique — without it, non-unique `startTime` values cause Prisma to skip
+    // or duplicate records across pages.
+    const rows = await prisma.appointment.findMany({
       where: {
         ...roleFilter,
         ...(from && to ? { startTime: { gte: new Date(from), lt: new Date(to) } } : {}),
       },
-      orderBy: { startTime: "desc" },
-      take: 50,
+      orderBy: [
+        { startTime: "desc" },
+        { id: "desc" },           // tiebreaker — makes cursor position unique
+      ],
+      take: limit + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       include: {
         patient: {
-          select: { id: true, name: true, patientCode: true, phase: true, totalSessionsPlanned: true, purposeOfVisit: true, status: true },
+          select: {
+            id: true, name: true, patientCode: true,
+            phase: true, totalSessionsPlanned: true,
+            purposeOfVisit: true, status: true,
+          },
         },
         doctor: { select: { id: true, name: true } },
       },
     });
 
-    return NextResponse.json(appointments);
+    const hasMore    = rows.length > limit;
+    const data       = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? data[data.length - 1].id : null;
+
+    return NextResponse.json({ data, nextCursor, hasMore });
   } catch (error) {
     console.error("GET /appointments error:", error);
     return NextResponse.json({ error: "Failed to fetch appointments" }, { status: 500 });

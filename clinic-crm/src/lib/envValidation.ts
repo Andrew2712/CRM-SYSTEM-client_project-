@@ -3,10 +3,9 @@
  * Call validateEnv() at the top of any critical API route.
  * Fails fast with a clear error rather than a cryptic runtime crash.
  *
- * FIX: Added UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN to the
- * required list. They were previously optional, meaning a production
- * misconfiguration silently fell back to the in-process rate limiter
- * (which is NOT shared across Vercel serverless instances).
+ * CHANGES:
+ * - Added SENTRY_DSN to the optional list with a production warning when absent.
+ *   Previously it wasn't listed at all, so a missing DSN in production was silent.
  */
 
 type EnvConfig = {
@@ -32,8 +31,10 @@ const ENV: EnvConfig = {
     "DEV_TEST_EMAIL",
     "DEV_TEST_PHONE",
     "NODE_ENV",
-    // Optional: override app URL for CSP connect-src (set to your real domain)
+    // Override app URL for CSP connect-src (set to your real domain)
     "NEXT_PUBLIC_APP_URL",
+    // Error monitoring — optional but strongly recommended in production
+    "SENTRY_DSN",
   ],
 };
 
@@ -51,5 +52,15 @@ export function validateEnv(): void {
       `[Env] Missing required environment variables: ${missing.join(", ")}. ` +
       `Set these in Vercel Dashboard → Settings → Environment Variables.`
     );
+  }
+
+  // Warn (don't throw) when optional-but-important vars are absent in production
+  if (process.env.NODE_ENV === "production") {
+    if (!process.env.SENTRY_DSN?.trim()) {
+      console.warn(
+        "[Env] SENTRY_DSN is not set. Server errors will not be captured in Sentry. " +
+        "Set it in Vercel Dashboard → Settings → Environment Variables."
+      );
+    }
   }
 }

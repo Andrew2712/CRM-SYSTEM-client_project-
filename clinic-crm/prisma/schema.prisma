@@ -5,88 +5,99 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
 model User {
-  id                    String                      @id @default(cuid())
-  name                  String
-  email                 String                      @unique
-  passwordHash          String
-  role                  Role                        @default(RECEPTIONIST)
-  phone                 String?
-  createdAt             DateTime                    @default(now())
+  id           String  @id @default(cuid())
+  name         String
+  email        String  @unique
+  passwordHash String
+  role         Role    @default(RECEPTIONIST)
+  phone        String?
+  createdAt    DateTime @default(now())
 
-  // ── Soft delete ──────────────────────────────────────────
-  isActive              Boolean                     @default(true)
-  deletedAt             DateTime?
-  // ─────────────────────────────────────────────────────────
+  // ── Soft delete ───────────────────────────────────────────────────────────
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  // ─────────────────────────────────────────────────────────────────────────
 
-  appointments          Appointment[]               @relation("DoctorAppointments")
-  auditLogs             AuditLog[]
-  availability          AvailabilitySlot[]
-  inAppNotifications    InAppNotification[]
-  holidayRequests       HolidayRequest[]            @relation("DoctorHolidayRequests")
-  reassignmentRequests  DoctorReassignmentRequest[] @relation("ReassignmentRequester")
-  reassignmentsFrom     DoctorReassignmentRequest[] @relation("ReassignmentFrom")
-  reassignmentsTo       DoctorReassignmentRequest[] @relation("ReassignmentTo")
-  expenses              Expense[]
-  waitlistEntries       Waitlist[]
+  appointments         Appointment[]               @relation("DoctorAppointments")
+  auditLogs            AuditLog[]
+  availability         AvailabilitySlot[]
+  inAppNotifications   InAppNotification[]
+  holidayRequests      HolidayRequest[]            @relation("DoctorHolidayRequests")
+  reassignmentRequests DoctorReassignmentRequest[] @relation("ReassignmentRequester")
+  reassignmentsFrom    DoctorReassignmentRequest[] @relation("ReassignmentFrom")
+  reassignmentsTo      DoctorReassignmentRequest[] @relation("ReassignmentTo")
+  expenses             Expense[]
+  waitlistEntries      Waitlist[]
+
+  // ── NextAuth database sessions (added for server-side revocation) ─────────
+  // Enables force-logout via: prisma.session.deleteMany({ where: { userId } })
+  accounts Account[]
+  sessions Session[]
+  // ─────────────────────────────────────────────────────────────────────────
 }
 
 model Patient {
-  id                   String         @id @default(cuid())
-  patientCode          String         @unique
+  id                   String        @id @default(cuid())
+  patientCode          String        @unique
   name                 String
-  phone                String         @unique
+  phone                String        @unique
   email                String?
   dob                  DateTime?
   address              String?
-  status               PatientStatus  @default(NEW)
-  createdAt            DateTime       @default(now())
+  status               PatientStatus @default(NEW)
+  createdAt            DateTime      @default(now())
   age                  Int?
   gender               Gender?
   medicalConditions    String?
   phase                Phase?
   purposeOfVisit       String?
-  totalSessionsPlanned Int            @default(0)
+  totalSessionsPlanned Int           @default(0)
   passwordHash         String?
 
-  // ── Soft delete ──────────────────────────────────────────
-  isActive             Boolean        @default(true)
-  deletedAt            DateTime?
-  // ─────────────────────────────────────────────────────────
+  // ── Soft delete ───────────────────────────────────────────────────────────
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  // ─────────────────────────────────────────────────────────────────────────
 
-  appointments         Appointment[]
-  visits               PatientVisit[]
-  waitlistEntries      Waitlist[]
+  appointments    Appointment[]
+  visits          PatientVisit[]
+  waitlistEntries Waitlist[]
 
-  @@index([createdAt])   // speeds up "recent patients" ORDER BY createdAt DESC
+  @@index([createdAt]) // speeds up "recent patients" ORDER BY createdAt DESC
 }
 
 model Appointment {
-  id                   String                      @id @default(cuid())
-  patientId            String
-  doctorId             String
-  startTime            DateTime
-  endTime              DateTime
-  status               AppointmentStatus           @default(CONFIRMED)
-  sessionType          SessionType
-  rescheduleCount      Int                         @default(0)
-  createdAt            DateTime                    @default(now())
+  id              String            @id @default(cuid())
+  patientId       String
+  doctorId        String
+  startTime       DateTime
+  endTime         DateTime
+  status          AppointmentStatus @default(CONFIRMED)
+  sessionType     SessionType
+  rescheduleCount Int               @default(0)
+  createdAt       DateTime          @default(now())
+  notes           String?
+
   doctor               User                        @relation("DoctorAppointments", fields: [doctorId], references: [id])
   patient              Patient                     @relation(fields: [patientId], references: [id])
   notifications        Notification[]
   visit                PatientVisit?
-  notes                String?
   reassignmentRequests DoctorReassignmentRequest[]
 
-  // ── Reminder flags — prevent duplicate sends ─────────────────────────────
-  reminder24hSent      Boolean                     @default(false)
-  reminder2hSent       Boolean                     @default(false)
+  // ── Reminder flags — prevent duplicate sends ──────────────────────────────
+  reminder24hSent Boolean @default(false)
+  reminder2hSent  Boolean @default(false)
   // ─────────────────────────────────────────────────────────────────────────
 
-  // ── Booking-conflict indexes ──────────────────────────────────────────────
+  // ── Booking-conflict indexes ───────────────────────────────────────────────
   @@index([doctorId, startTime, endTime])
   @@index([doctorId, status])
   // ─────────────────────────────────────────────────────────────────────────
@@ -101,8 +112,9 @@ model PatientVisit {
   notes         String?
   status        AppointmentStatus
   visitDate     DateTime
-  appointment   Appointment       @relation(fields: [appointmentId], references: [id])
-  patient       Patient           @relation(fields: [patientId], references: [id])
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  patient     Patient     @relation(fields: [patientId], references: [id])
 }
 
 model AvailabilitySlot {
@@ -112,7 +124,8 @@ model AvailabilitySlot {
   startTime DateTime
   endTime   DateTime
   isBooked  Boolean  @default(false)
-  doctor    User     @relation(fields: [doctorId], references: [id])
+
+  doctor User @relation(fields: [doctorId], references: [id])
 }
 
 model Notification {
@@ -122,7 +135,8 @@ model Notification {
   scheduledAt   DateTime
   sentAt        DateTime?
   status        NotificationStatus  @default(PENDING)
-  appointment   Appointment         @relation(fields: [appointmentId], references: [id])
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
 }
 
 model InAppNotification {
@@ -134,7 +148,8 @@ model InAppNotification {
   read      Boolean        @default(false)
   entityId  String?
   createdAt DateTime       @default(now())
-  user      User           @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 model HolidayRequest {
@@ -144,7 +159,8 @@ model HolidayRequest {
   reason    String
   status    HolidayRequestStatus @default(PENDING)
   createdAt DateTime             @default(now())
-  doctor    User                 @relation("DoctorHolidayRequests", fields: [doctorId], references: [id])
+
+  doctor User @relation("DoctorHolidayRequests", fields: [doctorId], references: [id])
 }
 
 model DoctorReassignmentRequest {
@@ -156,13 +172,12 @@ model DoctorReassignmentRequest {
   status            ReassignmentStatus @default(PENDING)
   notes             String?
   createdAt         DateTime           @default(now())
-  appointment       Appointment        @relation(fields: [appointmentId], references: [id])
-  requestedBy       User               @relation("ReassignmentRequester", fields: [requestedByUserId], references: [id])
-  fromDoctor        User               @relation("ReassignmentFrom", fields: [fromDoctorId], references: [id])
-  toDoctor          User               @relation("ReassignmentTo", fields: [toDoctorId], references: [id])
-}
 
-// ─── Waitlist ─────────────────────────────────────────────────────────────────
+  appointment  Appointment @relation(fields: [appointmentId], references: [id])
+  requestedBy  User        @relation("ReassignmentRequester", fields: [requestedByUserId], references: [id])
+  fromDoctor   User        @relation("ReassignmentFrom", fields: [fromDoctorId], references: [id])
+  toDoctor     User        @relation("ReassignmentTo", fields: [toDoctorId], references: [id])
+}
 
 model Waitlist {
   id            String         @id @default(cuid())
@@ -178,15 +193,13 @@ model Waitlist {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  patient       Patient        @relation(fields: [patientId], references: [id])
-  doctor        User           @relation(fields: [doctorId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  User    @relation(fields: [doctorId], references: [id])
 
   @@index([doctorId, status, preferredDate])
   @@index([patientId])
   @@index([status])
 }
-
-// ─── Expense Tracker ──────────────────────────────────────────────────────────
 
 model Expense {
   id          String          @id @default(cuid())
@@ -202,10 +215,8 @@ model Expense {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  createdBy   User @relation(fields: [createdById], references: [id])
+  createdBy User @relation(fields: [createdById], references: [id])
 }
-
-// ─── Audit Log ────────────────────────────────────────────────────────────────
 
 model AuditLog {
   id          String      @id @default(cuid())
@@ -222,14 +233,61 @@ model AuditLog {
   userAgent   String?
   createdAt   DateTime    @default(now())
 
-  user        User        @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([entity, entityId])
   @@index([createdAt])
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// NEXTAUTH DATABASE SESSION MODELS
+// Required by @auth/prisma-adapter (strategy: "database").
+// Enables server-side session revocation:
+//   await prisma.session.deleteMany({ where: { userId } })
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
 
 enum Role {
   ADMIN

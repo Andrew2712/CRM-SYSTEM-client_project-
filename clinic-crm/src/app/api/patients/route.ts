@@ -1,16 +1,36 @@
 /**
  * src/app/api/patients/route.ts
- * GET  /api/patients — list
+ * GET  /api/patients — list (cursor-paginated)
  * POST /api/patients — create
+ *
+ * Pagination query params:
+ *   cursor   — the `id` of the last item from the previous page (optional)
+ *   limit    — items per page, 1–100, defaults to 50
+ *
+ * Response shape:
+ *   { data: Patient[], nextCursor: string | null, hasMore: boolean }
+ *
+ * Client usage:
+ *   Page 1:  GET /api/patients?limit=50
+ *   Page 2:  GET /api/patients?limit=50&cursor=<lastId>
+ *   Stop when hasMore === false.
+ *
+ * NOTE: We inline the Prisma query here (using activityInclude + enrichWithActivity
+ * from @/lib/patientActivity) instead of delegating to fetchPatientsWithActivity,
+ * because fetchPatientsWithActivity returns a plain array and does not expose the
+ * orderBy / take / cursor knobs that cursor pagination requires.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Gender, Phase, PatientStatus } from "@prisma/client";
 import { requireAuth, getPatientFilter } from "@/lib/rbac";
-import { fetchPatientsWithActivity } from "@/lib/patientActivity";
+import { activityInclude, enrichWithActivity } from "@/lib/patientActivity";
 import bcrypt from "bcryptjs";
 import { rateLimitRead, rateLimitWrite, rateLimitResponse } from "@/lib/rateLimit";
 import { auditPatient } from "@/lib/audit";
+
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
 async function generatePatientCode(): Promise<string> {
   const year = new Date().getFullYear();
@@ -32,11 +52,50 @@ export async function GET(req: NextRequest) {
   try { session = await requireAuth(); } catch (err) { return err as NextResponse; }
 
   try {
-    const searchTerm   = req.nextUrl.searchParams.get("search") ?? "";
-    const statusFilter = req.nextUrl.searchParams.get("status") ?? "";
-    const rbacScope    = getPatientFilter(session);
-    const patients     = await fetchPatientsWithActivity({ where: rbacScope, searchTerm, statusFilter });
-    return NextResponse.json(patients);
+    const params       = req.nextUrl.searchParams;
+    const searchTerm   = params.get("search") ?? "";
+    const statusFilter = params.get("status") ?? "";
+    const cursor       = params.get("cursor") ?? undefined;
+    const rawLimit     = parseInt(params.get("limit") ?? String(DEFAULT_LIMIT), 10);
+    const limit        = Math.min(Math.max(isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1), MAX_LIMIT);
+
+    const rbacScope = getPatientFilter(session);
+
+    // Inline the query so we control orderBy / take / cursor directly.
+    // orderBy includes `id` as a tiebreaker — createdAt is non-unique so
+    // without it Prisma cannot reliably locate the cursor row, causing skipped
+    // or duplicated records across pages.
+    const rows = await prisma.patient.findMany({
+      where: {
+        isActive: true,
+        ...rbacScope,
+        ...(searchTerm ? {
+          OR: [
+            { name:        { contains: searchTerm, mode: "insensitive" } },
+            { phone:       { contains: searchTerm } },
+            { patientCode: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        } : {}),
+        ...(statusFilter ? { status: statusFilter as PatientStatus } : {}),
+      },
+      orderBy: [
+        { createdAt: "desc" },
+        { id: "desc" },           // tiebreaker — makes cursor position unique
+      ],
+      take: limit + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      include: {
+        ...activityInclude,
+        _count: { select: { appointments: true } },
+      },
+    });
+
+    const hasMore    = rows.length > limit;
+    const pageRows   = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
+    const data       = enrichWithActivity(pageRows);
+
+    return NextResponse.json({ data, nextCursor, hasMore });
   } catch (error) {
     console.error("GET /patients error:", error);
     return NextResponse.json({ error: "Failed to fetch patients" }, { status: 500 });
