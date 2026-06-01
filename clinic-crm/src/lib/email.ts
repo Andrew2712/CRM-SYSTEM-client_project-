@@ -1,6 +1,12 @@
 /**
  * src/lib/email.ts
  * Production-safe email via Resend with retry + structured logging.
+ *
+ * FIX: Added escapeHtml() helper and applied it to every user-supplied
+ * string (patientName, doctorName, dateTimeIST) injected into HTML
+ * templates. Without this, a patient name containing "<script>" would
+ * be injected verbatim into the email HTML — an XSS vector for any
+ * email client that renders scripts (rare but real).
  */
 
 import { Resend } from "resend";
@@ -15,6 +21,23 @@ function getResend(): Resend {
   }
   return _resend;
 }
+
+// ─── XSS sanitiser ────────────────────────────────────────────────────────────
+
+/**
+ * Escape the five HTML special characters so user-supplied strings
+ * are safe to interpolate directly into HTML templates.
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+// ─── sendEmail ────────────────────────────────────────────────────────────────
 
 /**
  * Send an email via Resend with automatic retry on transient failures.
@@ -56,7 +79,7 @@ export async function sendEmail(
       console.warn(`[Email] Attempt ${attempt}/${maxAttempts} failed for ${to}: ${lastError.message}`);
 
       if (attempt < maxAttempts) {
-        // Exponential backoff: 500ms, 1000ms
+        // Exponential backoff: 500 ms, 1000 ms
         await new Promise(r => setTimeout(r, 500 * attempt));
       }
     }
@@ -65,23 +88,26 @@ export async function sendEmail(
   throw new Error(`[Email] All ${maxAttempts} attempts failed for ${to}. Last: ${lastError?.message}`);
 }
 
-// ─── HTML Templates (unchanged) ───────────────────────────────────────────────
+// ─── HTML Templates ───────────────────────────────────────────────────────────
 
 export function bookingConfirmedPatientHtml(
   patientName: string,
   doctorName: string,
   dateTimeIST: string
 ): string {
+  const p = escapeHtml(patientName);
+  const d = escapeHtml(doctorName);
+  const t = escapeHtml(dateTimeIST);
   return `
     <div style="font-family:sans-serif;max-width:560px;margin:auto">
       <h2 style="color:#1d4ed8">Appointment Confirmed ✅</h2>
-      <p>Dear <strong>${patientName}</strong>,</p>
+      <p>Dear <strong>${p}</strong>,</p>
       <p>Your appointment has been successfully booked.</p>
       <table style="border-collapse:collapse;width:100%">
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Doctor</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb">${doctorName}</td></tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">${d}</td></tr>
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Date &amp; Time (IST)</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb">${dateTimeIST}</td></tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">${t}</td></tr>
       </table>
       <p style="margin-top:16px">Please arrive 10 minutes early. To reschedule, contact us at least 24 hours in advance.</p>
       <p style="color:#6b7280;font-size:12px">Vyayama Physio — Automated Notification</p>
@@ -94,16 +120,19 @@ export function bookingConfirmedDoctorHtml(
   patientName: string,
   dateTimeIST: string
 ): string {
+  const d = escapeHtml(doctorName);
+  const p = escapeHtml(patientName);
+  const t = escapeHtml(dateTimeIST);
   return `
     <div style="font-family:sans-serif;max-width:560px;margin:auto">
       <h2 style="color:#1d4ed8">New Appointment Booked 📅</h2>
-      <p>Dear <strong>${doctorName}</strong>,</p>
+      <p>Dear <strong>${d}</strong>,</p>
       <p>A new appointment has been scheduled for you.</p>
       <table style="border-collapse:collapse;width:100%">
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Patient</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb">${patientName}</td></tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">${p}</td></tr>
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Date &amp; Time (IST)</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb">${dateTimeIST}</td></tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">${t}</td></tr>
       </table>
       <p style="color:#6b7280;font-size:12px;margin-top:16px">Vyayama Physio — Automated Notification</p>
     </div>
@@ -115,16 +144,19 @@ export function missedSessionDoctorHtml(
   patientName: string,
   dateTimeIST: string
 ): string {
+  const d = escapeHtml(doctorName);
+  const p = escapeHtml(patientName);
+  const t = escapeHtml(dateTimeIST);
   return `
     <div style="font-family:sans-serif;max-width:560px;margin:auto">
       <h2 style="color:#dc2626">Missed Session Alert ❌</h2>
-      <p>Dear <strong>${doctorName}</strong>,</p>
+      <p>Dear <strong>${d}</strong>,</p>
       <p>The following appointment was marked as <strong>MISSED</strong>.</p>
       <table style="border-collapse:collapse;width:100%">
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Patient</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb">${patientName}</td></tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">${p}</td></tr>
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Scheduled Time (IST)</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb">${dateTimeIST}</td></tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">${t}</td></tr>
       </table>
       <p style="margin-top:16px">Please follow up with the patient to reschedule.</p>
       <p style="color:#6b7280;font-size:12px">Vyayama Physio — Automated Notification</p>
