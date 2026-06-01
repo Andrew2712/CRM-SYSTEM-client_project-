@@ -1,14 +1,10 @@
 /**
  * __tests__/api/appointments.integration.test.ts
  *
- * Integration tests for the appointments API routes using supertest-style
- * mocking with jest and next-test-api-route-handler (or plain Next.js
- * route handler invocation with mocked modules).
+ * Integration tests for the appointments API routes.
+ * Mocks Prisma and NextAuth — no live DB needed in CI.
  *
- * These tests cover the HTTP round-trip for the critical booking flow.
- * They mock Prisma and NextAuth so no live DB is needed in CI.
- *
- * Run:  npm run test  (or jest __tests__/api/appointments.integration.test.ts)
+ * Run: npm run test
  */
 
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
@@ -16,7 +12,6 @@ import { NextRequest } from "next/server";
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
-// Mock next-auth session
 const mockSession = {
   user: { id: "user-admin-1", role: "ADMIN" as const, name: "Admin", email: "admin@clinic.com" },
 };
@@ -25,13 +20,12 @@ jest.mock("next-auth", () => ({
 }));
 jest.mock("@/lib/auth", () => ({ authOptions: {} }));
 
-// Mock Prisma
 const mockAppointment = {
   id: "appt-001",
-  patientId: "patient-001",
-  doctorId:  "doctor-001",
-  startTime: new Date("2026-06-10T09:00:00.000Z"),
-  endTime:   new Date("2026-06-10T10:00:00.000Z"),
+  patientId:  "patient-001",
+  doctorId:   "doctor-001",
+  startTime:  new Date("2026-06-10T09:00:00.000Z"),
+  endTime:    new Date("2026-06-10T10:00:00.000Z"),
   sessionType: "FOLLOW_UP",
   status: "CONFIRMED",
   notes: null,
@@ -45,26 +39,30 @@ const mockAppointment = {
 
 const mockPrisma = {
   appointment: {
-    findMany:  jest.fn(),
+    findMany:   jest.fn(),
     findUnique: jest.fn(),
-    create:    jest.fn(),
+    create:     jest.fn(),
+    count:      jest.fn(),
+  },
+  user: {
+    findUnique: jest.fn(),
+  },
+  patient: {
+    findUnique: jest.fn(),
   },
   $transaction: jest.fn(),
 };
 jest.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
-// Mock rate limiting (always pass in tests)
 jest.mock("@/lib/rateLimit", () => ({
-  rateLimitRead:  jest.fn().mockResolvedValue({ success: true }),
-  rateLimitWrite: jest.fn().mockResolvedValue({ success: true }),
+  rateLimitRead:     jest.fn().mockResolvedValue({ success: true }),
+  rateLimitWrite:    jest.fn().mockResolvedValue({ success: true }),
   rateLimitResponse: jest.fn(),
-  getClientIp: jest.fn().mockReturnValue("127.0.0.1"),
+  getClientIp:       jest.fn().mockReturnValue("127.0.0.1"),
 }));
 
-// Mock env validation (no real env needed in tests)
 jest.mock("@/lib/envValidation", () => ({ validateEnv: jest.fn() }));
 
-// Mock side-effect functions
 jest.mock("@/lib/notificationWorkflow", () => ({
   sendBookingConfirmations: jest.fn().mockResolvedValue(undefined),
 }));
@@ -75,13 +73,9 @@ jest.mock("@/lib/bookingConflict", () => ({
   findOverlappingAppointment: jest.fn(),
 }));
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helper ────────────────────────────────────────────────────────────────────
 
-function makeRequest(
-  method: string,
-  url: string,
-  body?: unknown
-): NextRequest {
+function makeRequest(method: string, url: string, body?: unknown): NextRequest {
   const init: RequestInit = { method };
   if (body) {
     init.body    = JSON.stringify(body);
@@ -90,7 +84,7 @@ function makeRequest(
   return new NextRequest(new URL(url, "http://localhost"), init);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── GET tests ─────────────────────────────────────────────────────────────────
 
 describe("GET /api/appointments — pagination", () => {
   beforeEach(() => {
@@ -101,8 +95,6 @@ describe("GET /api/appointments — pagination", () => {
 
   it("returns data + nextCursor + hasMore=false when results fit within limit", async () => {
     const { GET } = await import("@/app/api/appointments/route");
-
-    // Prisma returns exactly `limit` rows (not limit+1) → no next page
     mockPrisma.appointment.findMany.mockResolvedValue([mockAppointment]);
 
     const req = makeRequest("GET", "http://localhost/api/appointments?limit=50");
@@ -117,8 +109,6 @@ describe("GET /api/appointments — pagination", () => {
 
   it("returns hasMore=true and nextCursor when more rows exist", async () => {
     const { GET } = await import("@/app/api/appointments/route");
-
-    // Return limit+1 rows (51) to signal a next page exists
     const rows = Array.from({ length: 3 }, (_, i) => ({ ...mockAppointment, id: `appt-${i}` }));
     mockPrisma.appointment.findMany.mockResolvedValue(rows);
 
@@ -170,6 +160,8 @@ describe("GET /api/appointments — pagination", () => {
   });
 });
 
+// ── POST tests ────────────────────────────────────────────────────────────────
+
 describe("POST /api/appointments — booking creation", () => {
   const validBody = {
     patientId:   "patient-001",
@@ -187,11 +179,15 @@ describe("POST /api/appointments — booking creation", () => {
     const { findOverlappingAppointment } = require("@/lib/bookingConflict");
     (findOverlappingAppointment as jest.Mock).mockResolvedValue(null);
 
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
-      fn(mockPrisma)
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)
     );
     mockPrisma.appointment.create.mockResolvedValue(mockAppointment);
     mockPrisma.appointment.findUnique.mockResolvedValue(null);
+    mockPrisma.appointment.count.mockResolvedValue(1);
+
+    mockPrisma.user.findUnique.mockResolvedValue({ id: "doctor-001", isActive: true });
+    mockPrisma.patient.findUnique.mockResolvedValue({ id: "patient-001", name: "Test Patient", isActive: true });
   });
 
   it("creates appointment and returns 201 on valid input", async () => {
@@ -205,7 +201,7 @@ describe("POST /api/appointments — booking creation", () => {
     expect(json.id).toBe("appt-001");
   });
 
-  it("returns 400 on invalid Zod schema (missing doctorId)", async () => {
+  it("returns 400 on missing required field (doctorId)", async () => {
     const { POST } = await import("@/app/api/appointments/route");
 
     const req = makeRequest("POST", "http://localhost/api/appointments", {
@@ -229,7 +225,8 @@ describe("POST /api/appointments — booking creation", () => {
 
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toMatch(/before/i);
+    // Route returns: "End time must be after start time"
+    expect(json.error).toMatch(/after/i);
   });
 
   it("returns 403 when DOCTOR tries to book for another doctor", async () => {
@@ -249,7 +246,7 @@ describe("POST /api/appointments — booking creation", () => {
     const { POST } = await import("@/app/api/appointments/route");
     const { findOverlappingAppointment } = require("@/lib/bookingConflict");
     (findOverlappingAppointment as jest.Mock).mockResolvedValue({
-      id: "existing-appt",
+      id:        "existing-appt",
       startTime: new Date("2026-06-10T08:30:00.000Z"),
       endTime:   new Date("2026-06-10T09:30:00.000Z"),
     });
@@ -259,7 +256,8 @@ describe("POST /api/appointments — booking creation", () => {
 
     expect(res.status).toBe(409);
     const json = await res.json();
-    expect(json.error).toMatch(/conflict/i);
+    // Route returns: "This slot has already been booked. Please choose a different time."
+    expect(json.error).toMatch(/already been booked/i);
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -274,11 +272,16 @@ describe("POST /api/appointments — booking creation", () => {
   });
 });
 
+// ── Rate limit test ───────────────────────────────────────────────────────────
+
 describe("GET /api/appointments — rate limit response", () => {
   it("returns 429 when rate limit is exceeded", async () => {
     const { GET } = await import("@/app/api/appointments/route");
     const { rateLimitRead, rateLimitResponse } = require("@/lib/rateLimit");
-    (rateLimitRead as jest.Mock).mockResolvedValue({ success: false, limit: 100, remaining: 0, reset: 9999, key: "rl:read:127.0.0.1" });
+    (rateLimitRead as jest.Mock).mockResolvedValue({
+      success: false, limit: 100, remaining: 0,
+      reset: 9999, key: "rl:read:127.0.0.1",
+    });
     (rateLimitResponse as jest.Mock).mockReturnValue(
       new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 })
     );

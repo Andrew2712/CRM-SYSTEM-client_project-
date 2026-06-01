@@ -1,54 +1,99 @@
 /**
  * __tests__/api/session-revocation.test.ts
  *
- * Tests for the revokeUserSessions helper introduced in auth.ts.
- * Verifies that sessions are deleted from the database when a user
- * is deactivated or an admin explicitly revokes access.
+ * Tests for revokeUserSessions() and restoreUserSessions() in auth.ts.
+ *
+ * The implementation now uses a Redis denylist (not prisma.session.deleteMany),
+ * so we mock @upstash/redis instead of Prisma.
  */
 
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
-// ── Mock Prisma ───────────────────────────────────────────────────────────────
+// ── Mock @upstash/redis ───────────────────────────────────────────────────────
+// getRedis() does: const { Redis } = await import("@upstash/redis")
+// Jest intercepts the dynamic import via this mock.
 
-const mockPrisma = {
-  session: {
-    deleteMany: jest.fn(),
-  },
+const mockRedis = {
+  set: jest.fn(),
+  del: jest.fn(),
+  get: jest.fn(),
 };
-jest.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+
+// The Redis constructor returns our mockRedis instance.
+const MockRedisConstructor = jest.fn(() => mockRedis);
+
+jest.mock("@upstash/redis", () => ({
+  Redis: MockRedisConstructor,
+}));
+
+// Mock Prisma so auth.ts can be imported (authorize() references prisma,
+// even though revokeUserSessions does not use it).
+jest.mock("@/lib/prisma", () => ({
+  prisma: {
+    user:    { findUnique: jest.fn() },
+    patient: { findFirst:  jest.fn() },
+  },
+}));
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("revokeUserSessions()", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Provide valid-looking env vars so getRedis() doesn't short-circuit
+    process.env.UPSTASH_REDIS_REST_URL   = "https://fake-redis.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "fake-token";
   });
 
-  it("calls prisma.session.deleteMany with the correct userId", async () => {
+  it("sets a denylist key in Redis with the correct userId", async () => {
     const { revokeUserSessions } = await import("@/lib/auth");
-    mockPrisma.session.deleteMany.mockResolvedValue({ count: 2 });
+    mockRedis.set.mockResolvedValue("OK");
 
-    const count = await revokeUserSessions("user-abc-123");
+    await revokeUserSessions("user-abc-123");
 
-    expect(mockPrisma.session.deleteMany).toHaveBeenCalledWith({
-      where: { userId: "user-abc-123" },
-    });
-    expect(count).toBe(2);
+    expect(mockRedis.set).toHaveBeenCalledWith(
+      "revoked:user-abc-123",
+      "1",
+      { ex: 8 * 60 * 60 }   // REVOKE_TTL — 8 hours
+    );
   });
 
-  it("returns 0 when the user has no active sessions", async () => {
+  it("completes without error when called for a user with no sessions", async () => {
     const { revokeUserSessions } = await import("@/lib/auth");
-    mockPrisma.session.deleteMany.mockResolvedValue({ count: 0 });
+    mockRedis.set.mockResolvedValue("OK");
 
-    const count = await revokeUserSessions("user-no-sessions");
-
-    expect(count).toBe(0);
+    await expect(revokeUserSessions("user-no-sessions")).resolves.toBeUndefined();
+    expect(mockRedis.set).toHaveBeenCalledTimes(1);
   });
 
-  it("propagates Prisma errors", async () => {
+  it("propagates Redis errors", async () => {
     const { revokeUserSessions } = await import("@/lib/auth");
-    mockPrisma.session.deleteMany.mockRejectedValue(new Error("DB error"));
+    mockRedis.set.mockRejectedValue(new Error("Redis connection refused"));
 
-    await expect(revokeUserSessions("user-123")).rejects.toThrow("DB error");
+    await expect(revokeUserSessions("user-123")).rejects.toThrow("Redis connection refused");
+  });
+});
+
+describe("restoreUserSessions()", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.UPSTASH_REDIS_REST_URL   = "https://fake-redis.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "fake-token";
+  });
+
+  it("deletes the denylist key from Redis", async () => {
+    const { restoreUserSessions } = await import("@/lib/auth");
+    mockRedis.del.mockResolvedValue(1);
+
+    await restoreUserSessions("user-abc-123");
+
+    expect(mockRedis.del).toHaveBeenCalledWith("revoked:user-abc-123");
+  });
+
+  it("propagates Redis errors", async () => {
+    const { restoreUserSessions } = await import("@/lib/auth");
+    mockRedis.del.mockRejectedValue(new Error("Redis timeout"));
+
+    await expect(restoreUserSessions("user-123")).rejects.toThrow("Redis timeout");
   });
 });

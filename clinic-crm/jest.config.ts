@@ -4,7 +4,6 @@ const config: Config = {
   preset: "ts-jest",
   testEnvironment: "node",
 
-  // ✅ New way — replaces deprecated globals block
   transform: {
     "^.+\\.tsx?$": ["ts-jest", {
       tsconfig: "tsconfig.test.json"
@@ -23,7 +22,8 @@ const config: Config = {
     "!src/**/*.d.ts",
   ],
 
-  transformIgnorePatterns: ["/node_modules/(?!(@prisma)/)"],
+  // @auth/prisma-adapter and @prisma are pure ESM — must be transformed by ts-jest
+  transformIgnorePatterns: ["/node_modules/(?!(@prisma|@auth)/)"],
 
   testTimeout: 10_000,
 };
