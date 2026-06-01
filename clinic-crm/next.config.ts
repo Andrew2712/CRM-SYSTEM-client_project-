@@ -1,39 +1,37 @@
 /**
  * next.config.ts
  *
- * FIX 1: NEXT_PUBLIC_APP_URL had a hardcoded placeholder fallback
- *         ("https://your-app.vercel.app") which would appear verbatim in the
- *         CSP connect-src header if the env var was not set, breaking API
- *         calls from the browser in production.
- *         Now: no fallback — the env var is required (see envValidation.ts).
- *         connect-src always includes 'self' so the app still works even if
- *         NEXT_PUBLIC_APP_URL is omitted during local dev.
+ * BUG: buildCsp() had a third branch — when called with no nonce argument
+ * (as in the old static-headers path) it emitted `script-src 'self'
+ * 'unsafe-inline'`. That branch is now unreachable (all CSP is set by
+ * middleware), but its presence caused confusion and was a latent footgun.
  *
- * FIX 2: CSP script-src fell back to 'unsafe-inline' when nonce was absent
- *         (i.e. for the static headers applied by next.config itself).
- *         Now: the static fallback uses 'strict-dynamic' without a nonce,
- *         which is safe and still allows script loading via trusted scripts.
+ * FIX: When no nonce is supplied, emit `script-src 'self' 'strict-dynamic'`
+ * — strict but safe. There is NO fallback to unsafe-inline anywhere.
+ *
+ * NOTE: The Content-Security-Policy header is intentionally NOT set here.
+ * next.config.ts `headers()` runs once at build time and cannot know the
+ * per-request nonce. CSP is set dynamically in src/middleware.ts which runs
+ * on every request and stamps the correct nonce each time.
  */
 
 import type { NextConfig } from "next";
 
-// Only include the app's own domain in connect-src when the env var is set.
-const appDomain = process.env.NEXT_PUBLIC_APP_URL?.trim() ?? "";
 const isDev = process.env.NODE_ENV !== "production";
 
 export function buildCsp(nonce?: string): string {
-  // In dev: allow eval for Next.js HMR.
-  // In prod with nonce: strict-dynamic; trusted scripts can load others.
-  // In prod without nonce (static header): strict-dynamic without nonce.
+  // Dev: allow eval for HMR. Prod: nonce + strict-dynamic always.
   const scriptSrc = isDev
     ? `script-src 'self' 'unsafe-eval' 'unsafe-inline'`
     : nonce
       ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
-      : `script-src 'self' 'strict-dynamic'`;
+      : `script-src 'self' 'strict-dynamic'`;   // no nonce → strict but no unsafe-inline
 
-  // Build connect-src: always include 'self'; add app domain only when set.
-  const extraConnect = appDomain ? ` ${appDomain}` : "";
-  const connectSrc = `connect-src 'self'${extraConnect} https://*.vercel.app`;
+  // Only include the app's own origin in connect-src when the env var is set.
+  const appOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim() ?? "";
+  const connectSrc = appOrigin
+    ? `connect-src 'self' ${appOrigin}`
+    : `connect-src 'self'`;
 
   return [
     `default-src 'self'`,
@@ -49,6 +47,7 @@ export function buildCsp(nonce?: string): string {
   ].join("; ");
 }
 
+// Static security headers — everything except CSP (CSP lives in middleware)
 const staticSecurityHeaders = [
   { key: "Strict-Transport-Security",  value: "max-age=31536000; includeSubDomains; preload" },
   { key: "X-Frame-Options",            value: "DENY" },
@@ -56,7 +55,6 @@ const staticSecurityHeaders = [
   { key: "Referrer-Policy",            value: "strict-origin-when-cross-origin" },
   { key: "X-DNS-Prefetch-Control",     value: "on" },
   { key: "Permissions-Policy",         value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
-  { key: "Content-Security-Policy",    value: buildCsp() },
 ];
 
 const nextConfig: NextConfig = {
