@@ -1,10 +1,11 @@
 import type { NextConfig } from "next";
 
-const PROD_DOMAIN =
-  process.env.NEXT_PUBLIC_APP_URL ?? "https://your-app.vercel.app";
-const isDev = process.env.NODE_ENV !== "production";
-
+// buildCsp is kept for reference / dev use only.
+// In production, the CSP with a per-request nonce is set in middleware.ts.
 export function buildCsp(nonce?: string): string {
+  const isDev = process.env.NODE_ENV !== "production";
+  const PROD_DOMAIN = process.env.NEXT_PUBLIC_APP_URL ?? "https://your-app.vercel.app";
+
   const scriptSrc = isDev
     ? `script-src 'self' 'unsafe-eval' 'unsafe-inline'`
     : nonce
@@ -25,6 +26,9 @@ export function buildCsp(nonce?: string): string {
   ].join("; ");
 }
 
+// Only static, non-CSP security headers live here.
+// The Content-Security-Policy header is set per-request in middleware.ts
+// because it needs a unique nonce each time.
 const staticSecurityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -32,7 +36,6 @@ const staticSecurityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-DNS-Prefetch-Control", value: "on" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
-  { key: "Content-Security-Policy", value: buildCsp() },
 ];
 
 const nextConfig: NextConfig = {

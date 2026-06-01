@@ -14,12 +14,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      <head>
-        <meta
-          httpEquiv="Content-Security-Policy"
-          content={`script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`}
-        />
-      </head>
       <body
         style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}
         {...(nonce ? { "data-nonce": nonce } : {})}
