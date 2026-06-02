@@ -1,15 +1,25 @@
 /**
  * src/lib/envValidation.ts
- * Call validateEnv() at the top of any critical API route.
- * Fails fast with a clear error rather than a cryptic runtime crash.
  *
- * CHANGES:
- * - Added SENTRY_DSN to the optional list with a production warning when absent.
- *   Previously it wasn't listed at all, so a missing DSN in production was silent.
+ * WHAT CHANGED:
+ *   - SENTRY_DSN moved from optional → required in production.
+ *     Previously it was optional with a console.warn, meaning production
+ *     server errors were silently dropped if the DSN wasn't set.
+ *     Now validateEnv() throws at boot time if SENTRY_DSN is absent in prod.
+ *   - META_WA_TEMPLATE_BOOKING, META_WA_TEMPLATE_REMINDER, and
+ *     META_WA_TEMPLATE_MISSED added to required list — the WhatsApp
+ *     fallback in whatsapp.ts reads these; they must be set before deploy.
+ *   - Added NEXT_PUBLIC_APP_URL to required in production (needed for
+ *     correct CSP connect-src and absolute URL generation in emails).
+ *
+ * USAGE: Call validateEnv() at the top of any critical API route handler.
+ * It throws immediately with a clear list of missing vars rather than
+ * letting the route proceed to a cryptic downstream failure.
  */
 
 type EnvConfig = {
   required: string[];
+  productionOnly: string[];   // required in prod, optional in dev
   optional: string[];
 };
 
@@ -23,44 +33,45 @@ const ENV: EnvConfig = {
     "META_WA_TOKEN",
     "META_WA_PHONE_ID",
     "CRON_SECRET",
-    // Rate limiting — must be distributed in production (Vercel is multi-instance)
     "UPSTASH_REDIS_REST_URL",
     "UPSTASH_REDIS_REST_TOKEN",
   ],
+
+  // These must be present in production but are optional during local dev
+  // (you may not have Sentry or a real domain set up locally).
+  productionOnly: [
+    "SENTRY_DSN",
+    "NEXT_PUBLIC_APP_URL",
+    "META_WA_TEMPLATE_BOOKING",
+    "META_WA_TEMPLATE_REMINDER",
+    "META_WA_TEMPLATE_MISSED",
+  ],
+
   optional: [
     "DEV_TEST_EMAIL",
     "DEV_TEST_PHONE",
     "NODE_ENV",
-    // Override app URL for CSP connect-src (set to your real domain)
-    "NEXT_PUBLIC_APP_URL",
-    // Error monitoring — optional but strongly recommended in production
-    "SENTRY_DSN",
   ],
 };
 
 export function validateEnv(): void {
   const missing: string[] = [];
+  const isProd = process.env.NODE_ENV === "production";
 
   for (const key of ENV.required) {
-    if (!process.env[key]?.trim()) {
-      missing.push(key);
+    if (!process.env[key]?.trim()) missing.push(key);
+  }
+
+  if (isProd) {
+    for (const key of ENV.productionOnly) {
+      if (!process.env[key]?.trim()) missing.push(key);
     }
   }
 
   if (missing.length > 0) {
     throw new Error(
       `[Env] Missing required environment variables: ${missing.join(", ")}. ` +
-      `Set these in Vercel Dashboard → Settings → Environment Variables.`
+      `Set these in Vercel Dashboard → Settings → Environment Variables (or .env.local for dev).`
     );
-  }
-
-  // Warn (don't throw) when optional-but-important vars are absent in production
-  if (process.env.NODE_ENV === "production") {
-    if (!process.env.SENTRY_DSN?.trim()) {
-      console.warn(
-        "[Env] SENTRY_DSN is not set. Server errors will not be captured in Sentry. " +
-        "Set it in Vercel Dashboard → Settings → Environment Variables."
-      );
-    }
   }
 }

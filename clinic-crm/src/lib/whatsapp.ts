@@ -1,53 +1,88 @@
 /**
  * src/lib/whatsapp.ts
- * 
- * Uses Meta WhatsApp Cloud API directly (not Twilio).
- * Cheaper, faster approval, and you already have a WhatsApp Business account.
- * 
+ *
+ * Uses Meta WhatsApp Cloud API directly.
+ *
+ * WHAT CHANGED — template rejection fallback:
+ *   The old sendWhatsAppTemplate() threw on any non-200 response, including
+ *   Meta error 132000 (template not found / pending approval) and 132001
+ *   (template paused). In production this meant a single unapproved template
+ *   would crash the entire notification workflow for that appointment.
+ *
+ *   Now sendWhatsAppTemplate() distinguishes between:
+ *     - Retryable errors (network, 5xx)  → 3 attempts with back-off
+ *     - Template errors (130472, 132000, 132001, 132015) → log + return,
+ *       do NOT re-throw. The caller continues; the appointment is not lost.
+ *   sendWhatsApp() (free-form) behaviour is unchanged.
+ *
  * Required env vars:
- *   META_WA_TOKEN          — Permanent system user token from Meta Business Manager
- *   META_WA_PHONE_ID       — Phone Number ID from Meta WhatsApp Business dashboard
- *   META_WA_TEMPLATE_*     — Template names (approved in Meta Business Manager)
+ *   META_WA_TOKEN              — Permanent system user token
+ *   META_WA_PHONE_ID           — Phone Number ID from Meta dashboard
+ *   META_WA_TEMPLATE_BOOKING   — Approved booking-confirmation template name
+ *   META_WA_TEMPLATE_REMINDER  — Approved reminder template name
+ *   META_WA_TEMPLATE_MISSED    — Approved missed-session template name
  */
 
-/**
- * Normalise a phone number to E.164 for Indian numbers.
- * Meta Cloud API requires E.164 WITHOUT the leading +
- * e.g. "9876543210" → "919876543210"
- */
+import { logger } from "@/lib/logger";
+
+// ─── Phone normalisation ───────────────────────────────────────────────────────
+
 export function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
-
-  if (raw.startsWith("+")) return digits; // strip the + for Meta API
-
-  // 10-digit Indian mobile (starts with 6-9)
-  if (digits.length === 10 && /^[6-9]/.test(digits)) {
-    return `91${digits}`;
-  }
-
-  // Already has 91 prefix: 12 digits starting with 91
-  if (digits.length === 12 && digits.startsWith("91")) {
-    return digits;
-  }
-
+  if (raw.startsWith("+")) return digits;
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return `91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return digits;
   return digits;
 }
 
-/**
- * Send a free-form WhatsApp message via Meta Cloud API.
- *
- * IMPORTANT: Free-form messages can only be sent within the 24-hour
- * customer service window (after the patient last messaged you).
- * For outbound-initiated notifications (like booking confirmations
- * to new patients), you MUST use approved message templates.
- * See sendWhatsAppTemplate() below.
- *
- * @param to      Recipient phone — any reasonable Indian format
- * @param message Plain-text message body
- */
+// ─── Meta error codes that mean "template problem — don't retry/throw" ────────
+
+const TEMPLATE_ERROR_CODES = new Set([
+  130472, // Outside 24h customer service window — template required
+  132000, // Template not found or not approved yet
+  132001, // Template paused by Meta
+  132015, // Template rejected
+]);
+
+// ─── Internal fetch helper ────────────────────────────────────────────────────
+
+async function metaPost(phoneId: string, token: string, body: object): Promise<{
+  ok: boolean;
+  msgId?: string;
+  errorCode?: number;
+  errorMsg?: string;
+}> {
+  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json() as {
+    messages?: { id: string }[];
+    error?: { message: string; code: number; error_subcode?: number };
+  };
+
+  if (!res.ok || data.error) {
+    return {
+      ok: false,
+      errorCode: data.error?.code,
+      errorMsg:  data.error?.message ?? `HTTP ${res.status}`,
+    };
+  }
+
+  return { ok: true, msgId: data.messages?.[0]?.id };
+}
+
+// ─── sendWhatsApp — free-form (24h window only) ───────────────────────────────
+
 export async function sendWhatsApp(to: string, message: string): Promise<void> {
   const phoneId = process.env.META_WA_PHONE_ID;
-  const token = process.env.META_WA_TOKEN;
+  const token   = process.env.META_WA_TOKEN;
 
   if (!phoneId || !token) {
     throw new Error(
@@ -58,11 +93,10 @@ export async function sendWhatsApp(to: string, message: string): Promise<void> {
 
   const normalised = normalizePhone(to);
   if (!normalised || normalised.length < 10) {
-    console.warn(`[WhatsApp] Skipping invalid phone: "${to}"`);
+    logger.warn("[WhatsApp] Skipping invalid phone", { raw: to });
     return;
   }
 
-  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
   const body = {
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -75,42 +109,21 @@ export async function sendWhatsApp(to: string, message: string): Promise<void> {
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
+      const result = await metaPost(phoneId, token, body);
 
-      const data = await res.json() as {
-        messages?: { id: string }[];
-        error?: { message: string; code: number; error_subcode?: number };
-      };
-
-      if (!res.ok || data.error) {
-        const errMsg = data.error?.message ?? `HTTP ${res.status}`;
-        const code = data.error?.code;
-
-        // 130472 = Outside 24h window — must use template
-        if (code === 130472) {
-          console.warn(
-            `[WhatsApp] 130472 — ${normalised} is outside the 24h customer service window. ` +
-            `Use sendWhatsAppTemplate() for outbound-initiated messages.`
-          );
-          return; // Not retryable — template required
+      if (!result.ok) {
+        if (result.errorCode === 130472) {
+          logger.warn("[WhatsApp] 130472 — outside 24h window, use template", { to: normalised });
+          return;
         }
-
-        throw new Error(`Meta API error (${code}): ${errMsg}`);
+        throw new Error(`Meta API error (${result.errorCode}): ${result.errorMsg}`);
       }
 
-      const msgId = data.messages?.[0]?.id;
-      console.log(`[WhatsApp] Sent ✓ | to=${normalised} | msgId=${msgId} | attempt=${attempt}`);
+      logger.info("[WhatsApp] Sent", { to: normalised, msgId: result.msgId, attempt });
       return;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[WhatsApp] Attempt ${attempt}/3 failed for ${normalised}: ${lastError.message}`);
+      logger.warn(`[WhatsApp] Attempt ${attempt}/3 failed`, { to: normalised, error: lastError.message });
       if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
     }
   }
@@ -118,30 +131,37 @@ export async function sendWhatsApp(to: string, message: string): Promise<void> {
   throw new Error(`[WhatsApp] All 3 attempts failed for ${normalised}. Last: ${lastError?.message}`);
 }
 
+// ─── sendWhatsAppTemplate — with template-rejection fallback ──────────────────
+
 /**
- * Send an approved template message (for outbound-initiated notifications).
- * Required for: booking confirmations, reminders, missed session alerts.
+ * Send an approved Meta template message.
+ *
+ * Template errors (not found, paused, rejected, outside window) are logged
+ * and swallowed — they do NOT throw. This keeps the notification workflow
+ * moving even if one template has an issue.
+ *
+ * Network and 5xx errors ARE retried (3 attempts).
  *
  * @param to           Recipient phone
  * @param templateName Approved template name in Meta Business Manager
  * @param langCode     Template language code (default: "en")
- * @param components   Template variable components (body parameters)
+ * @param components   Template variable components
+ * @returns            true if sent, false if skipped due to template error
  */
 export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
   langCode = "en",
   components: object[] = []
-): Promise<void> {
+): Promise<boolean> {
   const phoneId = process.env.META_WA_PHONE_ID;
-  const token = process.env.META_WA_TOKEN;
+  const token   = process.env.META_WA_TOKEN;
 
   if (!phoneId || !token) {
     throw new Error("[WhatsApp] META_WA_PHONE_ID or META_WA_TOKEN is not set.");
   }
 
   const normalised = normalizePhone(to);
-  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
   const body = {
     messaging_product: "whatsapp",
     to: normalised,
@@ -153,25 +173,61 @@ export async function sendWhatsAppTemplate(
     },
   };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let lastError: Error | null = null;
 
-  const data = await res.json() as { messages?: { id: string }[]; error?: { message: string } };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await metaPost(phoneId, token, body);
 
-  if (!res.ok || data.error) {
-    throw new Error(`[WhatsApp Template] Meta API error: ${data.error?.message ?? res.status}`);
+      if (!result.ok) {
+        // Template-level errors: log and return false — do NOT re-throw
+        if (result.errorCode && TEMPLATE_ERROR_CODES.has(result.errorCode)) {
+          logger.warn("[WhatsApp Template] Template error — skipping, not retrying", {
+            to: normalised,
+            template: templateName,
+            errorCode: result.errorCode,
+            errorMsg: result.errorMsg,
+            hint:
+              result.errorCode === 132000
+                ? "Template not found or pending approval in Meta Business Manager"
+                : result.errorCode === 132001
+                ? "Template is paused — check Meta Business Manager"
+                : result.errorCode === 132015
+                ? "Template was rejected by Meta"
+                : "Outside 24h window — template send attempted correctly",
+          });
+          return false;
+        }
+
+        throw new Error(`Meta API error (${result.errorCode}): ${result.errorMsg}`);
+      }
+
+      logger.info("[WhatsApp Template] Sent", {
+        to: normalised,
+        template: templateName,
+        msgId: result.msgId,
+        attempt,
+      });
+      return true;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      logger.warn(`[WhatsApp Template] Attempt ${attempt}/3 failed`, {
+        to: normalised,
+        template: templateName,
+        error: lastError.message,
+      });
+      if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
+    }
   }
 
-  console.log(`[WhatsApp Template] Sent ✓ | to=${normalised} | template=${templateName}`);
+  // All retries exhausted — this is a network/infra error, re-throw
+  throw new Error(
+    `[WhatsApp Template] All 3 attempts failed for ${normalised} (template: ${templateName}). ` +
+    `Last: ${lastError?.message}`
+  );
 }
 
-// ─── Message body builders (unchanged — used for free-form/session window) ────
+// ─── Message body builders ────────────────────────────────────────────────────
 
 export function bookingConfirmedPatientMsg(
   patientName: string,

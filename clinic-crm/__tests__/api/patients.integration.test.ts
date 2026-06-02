@@ -1,186 +1,338 @@
 /**
- * src/app/api/patients/route.ts
- * GET  /api/patients — list (cursor-paginated)
- * POST /api/patients — create
+ * __tests__/api/patients.integration.test.ts
  *
- * Pagination query params:
- *   cursor   — the `id` of the last item from the previous page (optional)
- *   limit    — items per page, 1–100, defaults to 50
+ * Integration tests for GET /api/patients and POST /api/patients.
  *
- * Response shape:
- *   { data: Patient[], nextCursor: string | null, hasMore: boolean }
+ * WHY jest.isolateModules() / jest.resetModules():
+ *   Jest caches every dynamic import() in its module registry for the
+ *   lifetime of the test file. If test A calls `await import("@/app/api/patients/route")`
+ *   and test B also calls it, B gets the SAME cached module — including any
+ *   internal state that was set during test A. More critically, the cached
+ *   module captured the mock references at first-import time. After
+ *   jest.clearAllMocks() the mock fns are reset but the module cache still
+ *   holds references to the OLD mock objects, which can cause mock behaviour
+ *   to bleed between tests (test A sets findUnique → patient, test B expects
+ *   findUnique → null, but the route still sees the cached mock).
  *
- * Client usage:
- *   Page 1:  GET /api/patients?limit=50
- *   Page 2:  GET /api/patients?limit=50&cursor=<lastId>
- *   Stop when hasMore === false.
+ *   Fix: call jest.resetModules() in every beforeEach so each test gets a
+ *   fresh module import with the current mock state.
  *
- * NOTE: We inline the Prisma query here (using activityInclude + enrichWithActivity
- * from @/lib/patientActivity) instead of delegating to fetchPatientsWithActivity,
- * because fetchPatientsWithActivity returns a plain array and does not expose the
- * orderBy / take / cursor knobs that cursor pagination requires.
- *
- * FIX: POST now validates the request body with CreatePatientSchema (Zod) before
- * touching the database. Previously the route only checked that name/phone were
- * truthy strings, which let invalid values like "not-a-phone" or single-char names
- * pass through to prisma.patient.create.
+ * WHY "name: A" returned 201 before the fix:
+ *   The route was cached from the very first test (which mocked findUnique → null
+ *   and create → patient). The cached closure held the FIRST mock snapshot.
+ *   When test 2 sent name:"A" (which Zod should reject), the route still ran
+ *   with the stale mock wiring and returned 201.
  */
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { Gender, Phase, PatientStatus } from "@prisma/client";
-import { requireAuth, getPatientFilter } from "@/lib/rbac";
-import { activityInclude, enrichWithActivity } from "@/lib/patientActivity";
-import bcrypt from "bcryptjs";
-import { rateLimitRead, rateLimitWrite, rateLimitResponse } from "@/lib/rateLimit";
-import { auditPatient } from "@/lib/audit";
-import { validate, CreatePatientSchema } from "@/lib/validation";
 
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 100;
+import { describe, it, expect, jest, beforeEach } from "@jest/globals";
+import { NextRequest } from "next/server";
 
-async function generatePatientCode(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `PHY-${year}-`;
-  const last = await prisma.patient.findFirst({
-    where: { patientCode: { startsWith: prefix } },
-    orderBy: { patientCode: "desc" },
-    select: { patientCode: true },
+// ── Module mocks (registered once — jest.resetModules keeps them active) ───────
+
+jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
+jest.mock("@/lib/auth",          () => ({ authOptions: {} }));
+jest.mock("@/lib/envValidation", () => ({ validateEnv: jest.fn() }));
+jest.mock("@/lib/audit",         () => ({
+  auditPatient: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+}));
+jest.mock("@/lib/rateLimit", () => ({
+  rateLimitRead:     jest.fn<() => Promise<{ success: boolean }>>().mockResolvedValue({ success: true }),
+  rateLimitWrite:    jest.fn<() => Promise<{ success: boolean }>>().mockResolvedValue({ success: true }),
+  rateLimitResponse: jest.fn<() => Response>(),
+  getClientIp:       jest.fn<() => string>().mockReturnValue("127.0.0.1"),
+}));
+jest.mock("bcryptjs", () => ({
+  hash: jest.fn<() => Promise<string>>().mockResolvedValue("hashed-pw"),
+}));
+
+// ── Prisma mock ───────────────────────────────────────────────────────────────
+
+type AnyRow    = Record<string, unknown>;
+type AnyRowArr = Record<string, unknown>[];
+
+const mockPatient: AnyRow = {
+  id:                   "patient-001",
+  patientCode:          "PHY-2026-0001",
+  name:                 "Ravi Kumar",
+  phone:                "+919876543210",
+  email:                "ravi@example.com",
+  age:                  35,
+  gender:               "MALE",
+  address:              "Bengaluru",
+  status:               "NEW",
+  phase:                null,
+  purposeOfVisit:       null,
+  medicalConditions:    null,
+  totalSessionsPlanned: 0,
+  isActive:             true,
+  deletedAt:            null,
+  createdAt:            new Date("2026-01-01"),
+  passwordHash:         "hashed",
+  dob:                  null,
+  appointments:         [],
+  visits:               [],
+  waitlistEntries:      [],
+  _count:               { appointments: 0 },
+};
+
+const mockPrisma = {
+  patient: {
+    findMany:   jest.fn<() => Promise<AnyRowArr>>(),
+    findUnique: jest.fn<() => Promise<AnyRow | null>>(),
+    findFirst:  jest.fn<() => Promise<AnyRow | null>>(),
+    create:     jest.fn<() => Promise<AnyRow>>(),
+  },
+};
+jest.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+
+jest.mock("@/lib/patientActivity", () => ({
+  activityInclude: {},
+  enrichWithActivity: (rows: AnyRowArr) =>
+    rows.map((r) => ({ ...r, activityStatus: "ACTIVE", daysSinceLastVisit: null })),
+}));
+
+// ── Session fixtures ──────────────────────────────────────────────────────────
+
+type SessionRole = "ADMIN" | "DOCTOR" | "RECEPTIONIST";
+type MockSession = { user: { id: string; role: SessionRole; name: string; email: string } };
+
+const adminSession:        MockSession = { user: { id: "user-admin-1", role: "ADMIN",        name: "Admin",  email: "admin@clinic.com" } };
+const doctorSession:       MockSession = { user: { id: "doctor-001",   role: "DOCTOR",       name: "Dr. A",  email: "dr@clinic.com"    } };
+const receptionistSession: MockSession = { user: { id: "recept-001",   role: "RECEPTIONIST", name: "Recept", email: "r@clinic.com"     } };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function makeRequest(method: string, url: string, body?: unknown): NextRequest {
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.body    = JSON.stringify(body);
+    init.headers = { "Content-Type": "application/json" };
+  }
+  return new NextRequest(new URL(url, "http://localhost"), init);
+}
+
+function asMock(fn: unknown): jest.Mock {
+  return fn as jest.Mock;
+}
+
+// ── GET /api/patients ─────────────────────────────────────────────────────────
+
+describe("GET /api/patients", () => {
+  beforeEach(() => {
+    // ← KEY FIX: reset the module registry before every test so each
+    // `await import(...)` below gets a fresh module wired to the current mocks.
+    jest.resetModules();
+    jest.clearAllMocks();
+
+    // Re-apply default mock return values AFTER clearAllMocks
+    asMock(require("next-auth").getServerSession).mockResolvedValue(adminSession);
+    mockPrisma.patient.findMany.mockResolvedValue([]);
   });
-  const nextNumber = last ? parseInt(last.patientCode.replace(prefix, ""), 10) + 1 : 1;
-  return `${prefix}${String(nextNumber).padStart(4, "0")}`;
-}
 
-export async function GET(req: NextRequest) {
-  const rl = await rateLimitRead(req);
-  if (!rl.success) return rateLimitResponse(rl);
+  it("returns 200 with data + pagination fields", async () => {
+    const { GET } = await import("@/app/api/patients/route");
+    mockPrisma.patient.findMany.mockResolvedValue([mockPatient]);
 
-  let session;
-  try { session = await requireAuth(); } catch (err) { return err as NextResponse; }
+    const res  = await GET(makeRequest("GET", "http://localhost/api/patients?limit=50"));
+    const json = await res.json();
 
-  try {
-    const params       = req.nextUrl.searchParams;
-    const searchTerm   = params.get("search") ?? "";
-    const statusFilter = params.get("status") ?? "";
-    const cursor       = params.get("cursor") ?? undefined;
-    const rawLimit     = parseInt(params.get("limit") ?? String(DEFAULT_LIMIT), 10);
-    const limit        = Math.min(Math.max(isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1), MAX_LIMIT);
+    expect(res.status).toBe(200);
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0].name).toBe("Ravi Kumar");
+    expect(json).toHaveProperty("nextCursor");
+    expect(json).toHaveProperty("hasMore");
+    expect(json.hasMore).toBe(false);
+  });
 
-    const rbacScope = getPatientFilter(session);
+  it("returns hasMore=true and nextCursor when more rows exist beyond limit", async () => {
+    const { GET } = await import("@/app/api/patients/route");
+    const rows = Array.from({ length: 3 }, (_, i) => ({ ...mockPatient, id: `p-${i}` }));
+    mockPrisma.patient.findMany.mockResolvedValue(rows);
 
-    // Inline the query so we control orderBy / take / cursor directly.
-    // orderBy includes `id` as a tiebreaker — createdAt is non-unique so
-    // without it Prisma cannot reliably locate the cursor row, causing skipped
-    // or duplicated records across pages.
-    const rows = await prisma.patient.findMany({
-      where: {
-        isActive: true,
-        ...rbacScope,
-        ...(searchTerm ? {
-          OR: [
-            { name:        { contains: searchTerm, mode: "insensitive" } },
-            { phone:       { contains: searchTerm } },
-            { patientCode: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        } : {}),
-        ...(statusFilter ? { status: statusFilter as PatientStatus } : {}),
-      },
-      orderBy: [
-        { createdAt: "desc" },
-        { id: "desc" },           // tiebreaker — makes cursor position unique
-      ],
-      take: limit + 1,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      include: {
-        ...activityInclude,
-        _count: { select: { appointments: true } },
-      },
+    const res  = await GET(makeRequest("GET", "http://localhost/api/patients?limit=2"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.data).toHaveLength(2);
+    expect(json.hasMore).toBe(true);
+    expect(json.nextCursor).toBe("p-1");
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { GET } = await import("@/app/api/patients/route");
+    asMock(require("next-auth").getServerSession).mockResolvedValue(null);
+
+    const res = await GET(makeRequest("GET", "http://localhost/api/patients"));
+    expect(res.status).toBe(401);
+  });
+
+  it("scopes results to the doctor's own patients when role is DOCTOR", async () => {
+    const { GET } = await import("@/app/api/patients/route");
+    asMock(require("next-auth").getServerSession).mockResolvedValue(doctorSession);
+
+    await GET(makeRequest("GET", "http://localhost/api/patients"));
+
+    const where = asMock(mockPrisma.patient.findMany).mock.calls[0][0].where;
+    expect(where.appointments).toEqual({ some: { doctorId: "doctor-001" } });
+  });
+
+  it("returns empty data array when no patients match", async () => {
+    const { GET } = await import("@/app/api/patients/route");
+
+    const res  = await GET(makeRequest("GET", "http://localhost/api/patients"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.data).toEqual([]);
+    expect(json.hasMore).toBe(false);
+    expect(json.nextCursor).toBeNull();
+  });
+
+  it("clamps limit to MAX_LIMIT of 100", async () => {
+    const { GET } = await import("@/app/api/patients/route");
+
+    await GET(makeRequest("GET", "http://localhost/api/patients?limit=9999"));
+
+    const take = asMock(mockPrisma.patient.findMany).mock.calls[0][0].take;
+    expect(take).toBe(101);
+  });
+
+  it("returns 429 when rate limit is exceeded", async () => {
+    const { GET } = await import("@/app/api/patients/route");
+    const { rateLimitRead, rateLimitResponse } = require("@/lib/rateLimit");
+    asMock(rateLimitRead).mockResolvedValue({
+      success: false, limit: 100, remaining: 0, reset: 9999, key: "rl:read:127.0.0.1",
     });
+    asMock(rateLimitResponse).mockReturnValue(
+      new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 })
+    );
 
-    const hasMore    = rows.length > limit;
-    const pageRows   = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
-    const data       = enrichWithActivity(pageRows);
+    const res = await GET(makeRequest("GET", "http://localhost/api/patients"));
+    expect(res.status).toBe(429);
+  });
+});
 
-    return NextResponse.json({ data, nextCursor, hasMore });
-  } catch (error) {
-    console.error("GET /patients error:", error);
-    return NextResponse.json({ error: "Failed to fetch patients" }, { status: 500 });
-  }
-}
+// ── POST /api/patients ────────────────────────────────────────────────────────
 
-export async function POST(req: NextRequest) {
-  const rl = await rateLimitWrite(req);
-  if (!rl.success) return rateLimitResponse(rl);
+describe("POST /api/patients", () => {
+  const validBody = {
+    name:                 "Priya Sharma",
+    phone:                "+919123456789",
+    email:                "priya@example.com",
+    age:                  28,
+    gender:               "FEMALE",
+    totalSessionsPlanned: 10,
+  };
 
-  let session;
-  try { session = await requireAuth(); } catch (err) { return err as NextResponse; }
+  beforeEach(() => {
+    // ← KEY FIX: fresh module import for every POST test too
+    jest.resetModules();
+    jest.clearAllMocks();
 
-  if (session.user.role === "DOCTOR")
-    return NextResponse.json({ error: "Doctors are not permitted to create patient records" }, { status: 403 });
+    asMock(require("next-auth").getServerSession).mockResolvedValue(adminSession);
 
-  let rawBody: unknown;
-  try { rawBody = await req.json(); }
-  catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
+    // Default: no duplicate phone, no code collision, create succeeds
+    mockPrisma.patient.findUnique.mockResolvedValue(null);
+    mockPrisma.patient.findFirst.mockResolvedValue(null);
+    mockPrisma.patient.create.mockResolvedValue({
+      ...mockPatient,
+      name:  "Priya Sharma",
+      phone: "+919123456789",
+      email: "priya@example.com",
+    });
+  });
 
-  // ── Zod validation — phone regex, name min-length, all field constraints ──
-  const result = validate(CreatePatientSchema, rawBody);
-  if (result.error !== undefined) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
-  }
+  it("creates a patient and returns 201 with credentials", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    const res  = await POST(makeRequest("POST", "http://localhost/api/patients", validBody));
+    const json = await res.json();
 
-  const body = result.data;
+    expect(res.status).toBe(201);
+    expect(json.name).toBe("Priya Sharma");
+    expect(json._credentials).toBeTruthy();
+    expect(json._credentials.username).toBe("priya@example.com");
+  });
 
-  try {
-    const existing = await prisma.patient.findUnique({ where: { phone: body.phone } });
-    if (existing)
-      return NextResponse.json({ error: "Patient with this phone already exists", existing }, { status: 409 });
+  it("returns 400 when name is too short (< 2 chars)", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    // "A" has length 1 → Zod min(2) rejects → validate() returns { error, status: 400 }
+    const res = await POST(makeRequest("POST", "http://localhost/api/patients", {
+      ...validBody, name: "A",
+    }));
+    expect(res.status).toBe(400);
+  });
 
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        const patientCode       = await generatePatientCode();
-        const registrationDate  = new Date().toISOString().slice(0, 10);
-        const firstName         = body.name.trim().split(/\s+/)[0];
-        const rawPassword       = `${firstName}_${registrationDate}`;
-        const passwordHash      = await bcrypt.hash(rawPassword, 10);
+  it("returns 400 when phone format is invalid", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    // "not-a-phone" fails /^\+?[0-9]{10,15}$/ → Zod rejects → 400
+    const res = await POST(makeRequest("POST", "http://localhost/api/patients", {
+      ...validBody, phone: "not-a-phone",
+    }));
+    expect(res.status).toBe(400);
+  });
 
-        const patient = await prisma.patient.create({
-          data: {
-            patientCode,
-            name:                 body.name,
-            phone:                body.phone,
-            email:                body.email || null,
-            age:                  body.age ?? null,
-            gender:               (body.gender as Gender) ?? null,
-            address:              body.address ?? null,
-            purposeOfVisit:       body.purposeOfVisit ?? null,
-            medicalConditions:    body.medicalConditions ?? null,
-            status:               (body.status as PatientStatus) ?? PatientStatus.NEW,
-            phase:                (body.phase as Phase) ?? null,
-            totalSessionsPlanned: body.totalSessionsPlanned ?? 0,
-            passwordHash:         body.email ? passwordHash : null,
-          },
-        });
+  it("returns 400 when required fields (phone) are missing", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    const res = await POST(makeRequest("POST", "http://localhost/api/patients", { name: "Only Name" }));
+    expect(res.status).toBe(400);
+  });
 
-        // ── Audit ──
-        await auditPatient(session, req, "CREATE", patient.id, {
-          name: patient.name,
-          new:  { patientCode, name: patient.name, phone: patient.phone, email: patient.email },
-        });
+  it("returns 409 when a patient with the same phone already exists", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    mockPrisma.patient.findUnique.mockResolvedValue(mockPatient);
 
-        return NextResponse.json(
-          { ...patient, _credentials: body.email ? { username: body.email, defaultPassword: rawPassword } : null },
-          { status: 201 }
-        );
-      } catch (err: unknown) {
-        const prismaErr = err as { code?: string };
-        if (prismaErr.code === "P2002" && attempt < 4) continue;
-        console.error("Create patient error:", err);
-        return NextResponse.json({ error: "Failed to create patient" }, { status: 500 });
-      }
-    }
-    return NextResponse.json({ error: "Failed to generate a unique patient code" }, { status: 500 });
-  } catch (error) {
-    console.error("POST /patients error:", error);
-    return NextResponse.json({ error: "Unexpected server error" }, { status: 500 });
-  }
-}
+    const res  = await POST(makeRequest("POST", "http://localhost/api/patients", validBody));
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error).toMatch(/already exists/i);
+  });
+
+  it("returns 400 on malformed JSON body", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    const req = new NextRequest("http://localhost/api/patients", {
+      method:  "POST",
+      body:    "this is not json",
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 403 when a DOCTOR tries to create a patient", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    asMock(require("next-auth").getServerSession).mockResolvedValue(doctorSession);
+
+    const res = await POST(makeRequest("POST", "http://localhost/api/patients", validBody));
+    expect(res.status).toBe(403);
+  });
+
+  it("allows RECEPTIONIST to create a patient", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    asMock(require("next-auth").getServerSession).mockResolvedValue(receptionistSession);
+
+    const res = await POST(makeRequest("POST", "http://localhost/api/patients", validBody));
+    expect(res.status).toBe(201);
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    asMock(require("next-auth").getServerSession).mockResolvedValue(null);
+
+    const res = await POST(makeRequest("POST", "http://localhost/api/patients", validBody));
+    expect(res.status).toBe(401);
+  });
+
+  it("omits _credentials when no email is provided", async () => {
+    const { POST } = await import("@/app/api/patients/route");
+    mockPrisma.patient.create.mockResolvedValue({ ...mockPatient, name: "No Email", email: null });
+
+    const res  = await POST(makeRequest("POST", "http://localhost/api/patients", {
+      name: "No Email Patient", phone: "+919000000001",
+    }));
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json._credentials).toBeNull();
+  });
+});
