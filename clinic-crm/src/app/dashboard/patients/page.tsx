@@ -95,10 +95,39 @@ function Field({ label, required: req, children }: { label: string; required?: b
 
 const inputCls = "w-full bg-[#FAF8F2] border border-[#4A0F06]/15 rounded-xl px-3.5 py-2.5 text-sm text-[#4A0F06] placeholder:text-[#4A0F06]/30 focus:outline-none focus:ring-2 focus:ring-[#D86F32]/40 focus:border-[#D86F32]/50 transition-all";
 
+// ─── WhatsApp Business deep-link helper ──────────────────────────────────────
+// Strategy:
+//   1. Try "whatsapp://send?phone=…&text=…"  — opens WhatsApp Business if it is
+//      the default/only WA app on the device (Android app chooser appears when
+//      both regular and Business are installed, letting the user pick).
+//   2. After 1 500 ms, if the page is still visible (i.e. no app opened), fall
+//      back to "https://wa.me/…" which opens WhatsApp Web or the installed app
+//      via the browser's default WA association.
+// On iOS both apps register the whatsapp:// scheme; the OS opens whichever the
+// user has set as default. There is no official URL that exclusively targets the
+// Business app — this is the closest the web platform allows.
+function openWhatsAppBusiness(waUrl: string, phone: string, text: string): void {
+  const deepLink = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(text)}`;
+  const fallback = waUrl; // https://wa.me/… already built by the caller
+
+  // Try the native deep link
+  window.location.href = deepLink;
+
+  // If the browser didn't hand off to an app after 1.5 s, open wa.me in a new tab
+  const timer = setTimeout(() => {
+    window.open(fallback, "_blank", "noopener,noreferrer");
+  }, 1500);
+
+  // If the page blurs (app opened), clear the fallback timer
+  const onBlur = () => { clearTimeout(timer); window.removeEventListener("blur", onBlur); };
+  window.addEventListener("blur", onBlur);
+}
+
 // ─── Action Icon Button ───────────────────────────────────────────────────────
-function ActionIconBtn({ href, onClick, title, disabled, children, variant = "default" }: {
+function ActionIconBtn({ href, onClick, title, disabled, children, variant = "default", waPhone, waText }: {
   href?: string; onClick?: () => void; title: string; disabled?: boolean;
   children: React.ReactNode; variant?: "default" | "mail" | "whatsapp" | "danger";
+  waPhone?: string; waText?: string;
 }) {
   const variants: Record<string, string> = {
     default:  "bg-[#FAF8F2] hover:bg-[#D86F32]/10 border-[#4A0F06]/10 hover:border-[#D86F32]/30 text-[#4A0F06]/40 hover:text-[#D86F32]",
@@ -107,6 +136,21 @@ function ActionIconBtn({ href, onClick, title, disabled, children, variant = "de
     danger:   "bg-[#FAF8F2] hover:bg-red-50 border-[#4A0F06]/10 hover:border-red-200 text-[#4A0F06]/40 hover:text-red-500",
   };
   const base = `flex items-center justify-center w-8 h-8 border rounded-lg transition-all flex-shrink-0 ${variants[variant]} ${disabled ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`;
+
+  // WhatsApp buttons: use the deep-link + fallback strategy
+  if (variant === "whatsapp" && waPhone && waText && href && !disabled) {
+    return (
+      <button
+        type="button"
+        title={title}
+        className={base}
+        onClick={() => openWhatsAppBusiness(href, waPhone, waText)}
+      >
+        {children}
+      </button>
+    );
+  }
+
   if (href && !disabled) return <a href={href} title={title} target="_blank" rel="noopener noreferrer" className={base}>{children}</a>;
   return <button type="button" onClick={onClick} title={title} disabled={disabled} className={base}>{children}</button>;
 }
@@ -153,7 +197,7 @@ function MobilePatientCard({ p, isAdmin, role, onDelete }: {
               {p.email && <ActionIconBtn href={`mailto:${p.email}`} title="Email" variant="mail">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
               </ActionIconBtn>}
-              {rawPhone && <ActionIconBtn href={waUrl} title="WhatsApp" variant="whatsapp">
+              {rawPhone && <ActionIconBtn href={waUrl} waPhone={waPhone} waText={`Hello ${p.name}, this is a message from Vyayama-physio.`} title="WhatsApp Business" variant="whatsapp">
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.854L.057 23.986l6.305-1.654A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.885 0-3.651-.51-5.17-1.399l-.371-.22-3.844 1.008 1.026-3.748-.242-.387A9.956 9.956 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
               </ActionIconBtn>}
               {isAdmin && <ActionIconBtn onClick={() => onDelete(p.id, p.name)} title="Remove" variant="danger">
@@ -543,7 +587,7 @@ export default function PatientsPage() {
                             <ActionIconBtn href={p.email ? `mailto:${p.email}` : undefined} title={p.email ? `Email ${p.name}` : "No email"} disabled={!p.email} variant="mail">
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                             </ActionIconBtn>
-                            <ActionIconBtn href={waUrl || undefined} title={rawPhone ? `WhatsApp ${p.name}` : "No phone"} disabled={!rawPhone} variant="whatsapp">
+                            <ActionIconBtn href={waUrl || undefined} waPhone={waPhone} waText={`Hello ${p.name}, this is a message from Vyayama-physio.`} title={rawPhone ? `WhatsApp Business — ${p.name}` : "No phone"} disabled={!rawPhone} variant="whatsapp">
                               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.854L.057 23.986l6.305-1.654A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.885 0-3.651-.51-5.17-1.399l-.371-.22-3.844 1.008 1.026-3.748-.242-.387A9.956 9.956 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
                             </ActionIconBtn>
                             {isAdmin && (
