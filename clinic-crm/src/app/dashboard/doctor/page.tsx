@@ -75,39 +75,46 @@ export default function DoctorPage() {
 
   async function loadAppointments() {
     setLoading(true);
-    const res = await fetch("/api/appointments", { credentials: "include" });
-    const data = await res.json();
-    if (!Array.isArray(data)) { setLoading(false); return; }
+    try {
+      const res = await fetch("/api/appointments", { credentials: "include" });
+      const raw = await res.json();
 
-    const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart); todayEnd.setDate(todayStart.getDate() + 1);
-    const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay()); weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
+      // GET /api/appointments returns { data, nextCursor, hasMore } (paginated).
+      // Fall back to direct array for backwards compat.
+      const data: Appointment[] = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
 
-    const todayAppts = (data as Appointment[]).filter(a => {
-      const d = new Date(a.startTime);
-      return d >= todayStart && d < todayEnd;
-    });
-    const weekAppts = (data as Appointment[]).filter(a => {
-      const d = new Date(a.startTime);
-      return d >= weekStart && d < weekEnd;
-    });
+      const now = new Date();
+      const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(todayStart); todayEnd.setDate(todayStart.getDate() + 1);
+      const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay()); weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
 
-    const past = (data as Appointment[]).filter(a =>
-      ACTIONABLE.includes(a.status) && new Date(a.endTime) < now &&
-      new Date(a.startTime) < todayStart
-    );
+      const todayAppts = data.filter(a => {
+        const d = new Date(a.startTime);
+        return d >= todayStart && d < todayEnd;
+      });
+      const weekAppts = data.filter(a => {
+        const d = new Date(a.startTime);
+        return d >= weekStart && d < weekEnd;
+      });
 
-    setAppointments(todayAppts);
-    setAllAppointments(data as Appointment[]);
-    setPastPending(past);
-    setWeekStats({
-      attended:  weekAppts.filter(a => a.status === "ATTENDED").length,
-      missed:    weekAppts.filter(a => a.status === "MISSED").length,
-      upcoming:  weekAppts.filter(a => ACTIONABLE.includes(a.status)).length,
-      cancelled: weekAppts.filter(a => a.status === "CANCELLED").length,
-    });
+      const past = data.filter(a =>
+        ACTIONABLE.includes(a.status) && new Date(a.endTime) < now &&
+        new Date(a.startTime) < todayStart
+      );
+
+      setAppointments(todayAppts);
+      setAllAppointments(data);
+      setPastPending(past);
+      setWeekStats({
+        attended:  weekAppts.filter(a => a.status === "ATTENDED").length,
+        missed:    weekAppts.filter(a => a.status === "MISSED").length,
+        upcoming:  weekAppts.filter(a => ACTIONABLE.includes(a.status)).length,
+        cancelled: weekAppts.filter(a => a.status === "CANCELLED").length,
+      });
+    } catch (err) {
+      console.error("Failed to load appointments:", err);
+    }
     setLoading(false);
   }
 

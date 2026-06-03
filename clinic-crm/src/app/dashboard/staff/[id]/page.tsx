@@ -208,11 +208,13 @@ export default function StaffProfilePage() {
         setProfile(staffData.user);
 
         if (ar.ok) {
-          const apptData: AppointmentSlim[] = await ar.json();
-          // ✅ FIX: Always filter by the VIEWED staff member's ID, regardless of viewer role.
-          // Previously, admin saw ALL appointments instead of only the viewed doctor's.
+          const raw = await ar.json();
+          // GET /api/appointments returns { data, nextCursor, hasMore } (paginated)
+          // Fall back to direct array for backwards compat
+          const apptData: AppointmentSlim[] = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+          // Always filter by the viewed staff member's ID
           const filtered = apptData.filter((a: any) => a.doctor?.id === staffId || a.doctorId === staffId);
-          setAppointments(Array.isArray(filtered) ? filtered : []);
+          setAppointments(filtered);
         }
         setLoading(false);
         setTimeout(() => setChartsReady(true), 80);

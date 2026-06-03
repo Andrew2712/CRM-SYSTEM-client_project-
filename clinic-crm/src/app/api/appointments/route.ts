@@ -89,10 +89,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Env validation ────────────────────────────────────────────────────────
-  try { validateEnv(); } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+  // ── Env validation (production only — dev may not have all vars set) ────────
+  if (process.env.NODE_ENV === "production") {
+    try { validateEnv(); } catch (err) {
+      console.error(err);
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    }
   }
 
   const rl = await rateLimitWrite(req);

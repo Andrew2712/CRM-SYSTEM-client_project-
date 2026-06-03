@@ -112,12 +112,23 @@ export default function BookingPage() {
 
   useEffect(() => {
     fetch("/api/doctors",{credentials:"include"}).then(r=>r.json()).then(d=>setDoctors(Array.isArray(d)?d:[])).catch(()=>{});
-    fetch("/api/patients",{credentials:"include"}).then(r=>r.json()).then(d=>setPatients(Array.isArray(d)?d:[])).catch(()=>{});
+    fetch("/api/patients",{credentials:"include"}).then(r=>r.json()).then(d=>{
+      // GET /api/patients returns { data, nextCursor, hasMore } (paginated)
+      if (Array.isArray(d)) setPatients(d);
+      else if (d && Array.isArray(d.data)) setPatients(d.data);
+      else setPatients([]);
+    }).catch(()=>{});
     loadUpcoming();
   }, []);
 
   function loadUpcoming() {
-    fetch("/api/appointments",{credentials:"include"}).then(r=>r.json()).then(d=>setUpcoming(Array.isArray(d)?d:[])).catch(()=>{});
+    fetch("/api/appointments",{credentials:"include"}).then(r=>r.json()).then(d=>{
+      // GET /api/appointments now returns { data, nextCursor, hasMore }
+      // Fall back to direct array for backwards compat during migration
+      if (Array.isArray(d)) setUpcoming(d);
+      else if (d && Array.isArray(d.data)) setUpcoming(d.data);
+      else setUpcoming([]);
+    }).catch(()=>{});
   }
 
   function handlePatientSelect(p: Patient) {
@@ -185,12 +196,12 @@ export default function BookingPage() {
     } finally { setCancelling(null); }
   }
 
-  const filteredPatients = patientSearch.length > 1
+  const filteredPatients = patientSearch.length > 0
     ? patients.filter(p =>
         p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
         p.patientCode.toLowerCase().includes(patientSearch.toLowerCase())
       )
-    : patients.slice(0, 6);
+    : patients.slice(0, 8);
 
   const filteredUpcoming = upcomingFilter === "ALL"
     ? upcoming
@@ -294,7 +305,7 @@ export default function BookingPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                   </div>
-                  <input type="text" placeholder="Search by name or patient ID…" value={patientSearch} autoComplete="off"
+                  <input type="text" placeholder="Search patient by name or ID…" value={patientSearch} autoComplete="off"
                     onChange={e => { setPatientSearch(e.target.value); setShowDropdown(true); if (!e.target.value) clearPatient(); }}
                     onFocus={() => setShowDropdown(true)}
                     className={`${inputCls} pl-10 ${selectedPatient ? "pr-10" : ""}`}/>

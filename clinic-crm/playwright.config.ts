@@ -6,6 +6,7 @@ export default defineConfig({
   testDir: "./__tests__/e2e",
   timeout: 30_000,
   retries: process.env.CI ? 2 : 0,
+  globalSetup: "./__tests__/e2e/global-setup.js",
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: BASE_URL,

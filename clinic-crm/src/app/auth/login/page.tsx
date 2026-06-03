@@ -318,7 +318,7 @@ export default function AuthPage() {
                   <form onSubmit={handleLogin} className="space-y-5">
                     {/* Email */}
                     <div>
-                      <label className={labelCls}>Email address</label>
+                      <label htmlFor="login-email" className={labelCls}>Email address</label>
                       <div className="relative">
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
                           <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -326,6 +326,7 @@ export default function AuthPage() {
                           </svg>
                         </div>
                         <input
+                          id="login-email"
                           type="email"
                           required
                           value={loginEmail}
@@ -338,7 +339,7 @@ export default function AuthPage() {
 
                     {/* Password */}
                     <div>
-                      <label className={labelCls}>Password</label>
+                      <label htmlFor="login-password" className={labelCls}>Password</label>
                       <div className="relative">
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
                           <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -346,6 +347,7 @@ export default function AuthPage() {
                           </svg>
                         </div>
                         <input
+                          id="login-password"
                           type={showLoginPwd ? "text" : "password"}
                           required
                           value={loginPassword}
@@ -372,10 +374,10 @@ export default function AuthPage() {
                       style={{ background: "linear-gradient(135deg, #3E1F14, #5A1F14, #8B3A1E)" }}
                     >
                       {loading ? (
-                        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> logging in…</>
+                        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Signing in…</>
                       ) : (
                         <>
-                          login
+                          Sign In
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M13 5l7 7-7 7" />
                           </svg>
@@ -451,38 +453,38 @@ export default function AuthPage() {
                   {view === "signup" && (
                     <form onSubmit={handleSignup} className="space-y-4">
                       <div>
-                        <label className={labelCls}>Full name</label>
+                        <label htmlFor="signup-name" className={labelCls}>Full name</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
                             <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                             </svg>
                           </div>
-                          <input required value={signupName} onChange={e => setSignupName(e.target.value)}
+                          <input id="signup-name" required value={signupName} onChange={e => setSignupName(e.target.value)}
                             placeholder="Dr. John Smith" className={`${inputCls} pl-11`} />
                         </div>
                       </div>
                       <div>
-                        <label className={labelCls}>Email address</label>
+                        <label htmlFor="signup-email" className={labelCls}>Email address</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
                             <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
                           </div>
-                          <input type="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)}
+                          <input id="signup-email" type="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)}
                             placeholder="doctor@clinic.com" className={`${inputCls} pl-11`} />
                         </div>
                       </div>
                       <div>
-                        <label className={labelCls}>Password</label>
+                        <label htmlFor="signup-password" className={labelCls}>Password</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
                             <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
                           </div>
-                          <input type={showSignupPwd ? "text" : "password"} required minLength={6}
+                          <input id="signup-password" type={showSignupPwd ? "text" : "password"} required minLength={6}
                             value={signupPassword} onChange={e => setSignupPassword(e.target.value)}
                             placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
                           <button type="button" onClick={() => setShowSignupPwd(!showSignupPwd)}
@@ -528,26 +530,26 @@ export default function AuthPage() {
                   {view === "forgot" && (
                     <form onSubmit={handleForgot} className="space-y-4">
                       <div>
-                        <label className={labelCls}>Registered email</label>
+                        <label htmlFor="forgot-email" className={labelCls}>Registered email</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
                             <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
                           </div>
-                          <input type="email" required value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                          <input id="forgot-email" type="email" required value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
                             placeholder="your@email.com" className={`${inputCls} pl-11`} />
                         </div>
                       </div>
                       <div>
-                        <label className={labelCls}>New password</label>
+                        <label htmlFor="forgot-password" className={labelCls}>New password</label>
                         <div className="relative">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
                             <svg className="w-4 h-4" style={{ color: "#A8998A" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
                           </div>
-                          <input type={showForgotPwd ? "text" : "password"} required minLength={6}
+                          <input id="forgot-password" type={showForgotPwd ? "text" : "password"} required minLength={6}
                             value={forgotPassword} onChange={e => setForgotPassword(e.target.value)}
                             placeholder="Min. 6 characters" className={`${inputCls} pl-11 pr-12`} />
                           <button type="button" onClick={() => setShowForgotPwd(!showForgotPwd)}

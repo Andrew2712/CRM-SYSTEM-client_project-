@@ -207,7 +207,9 @@ export default function PatientsPage() {
       const text = await res.text();
       if (!text) { setPatients([]); setLoading(false); return; }
       const data = JSON.parse(text);
-      const sorted = Array.isArray(data) ? data.sort((a: Patient, b: Patient) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
+      // GET /api/patients returns { data, nextCursor, hasMore } (paginated)
+      const list: Patient[] = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      const sorted = list.sort((a: Patient, b: Patient) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       setPatients(sorted);
     } catch { setPatients([]); }
     setLoading(false);
@@ -219,7 +221,9 @@ export default function PatientsPage() {
       const text = await res.text();
       if (!text) return;
       const data = JSON.parse(text);
-      setAllPatients(Array.isArray(data) ? data.sort((a: Patient, b: Patient) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : []);
+      // GET /api/patients returns { data, nextCursor, hasMore } (paginated)
+      const list: Patient[] = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      setAllPatients(list.sort((a: Patient, b: Patient) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
     } catch {}
   }, []);
 
@@ -233,7 +237,8 @@ export default function PatientsPage() {
     try {
       const res = await fetch(`/api/patients`, { credentials: "include" });
       const data = await res.json();
-      const list = Array.isArray(data) ? data : [];
+      // GET /api/patients returns { data, nextCursor, hasMore } (paginated)
+      const list: Patient[] = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
       setAllPatients(list);
       exportToGoogleSheets(list);
       setExportDone(true);
