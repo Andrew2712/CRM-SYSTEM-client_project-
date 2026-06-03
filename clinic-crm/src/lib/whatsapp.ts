@@ -1,93 +1,81 @@
 /**
  * src/lib/whatsapp.ts
  *
- * Uses Meta WhatsApp Cloud API directly.
- *
- * WHAT CHANGED — template rejection fallback:
- *   The old sendWhatsAppTemplate() threw on any non-200 response, including
- *   Meta error 132000 (template not found / pending approval) and 132001
- *   (template paused). In production this meant a single unapproved template
- *   would crash the entire notification workflow for that appointment.
- *
- *   Now sendWhatsAppTemplate() distinguishes between:
- *     - Retryable errors (network, 5xx)  → 3 attempts with back-off
- *     - Template errors (130472, 132000, 132001, 132015) → log + return,
- *       do NOT re-throw. The caller continues; the appointment is not lost.
- *   sendWhatsApp() (free-form) behaviour is unchanged.
+ * Sends WhatsApp messages via Twilio's WhatsApp API.
  *
  * Required env vars:
- *   META_WA_TOKEN              — Permanent system user token
- *   META_WA_PHONE_ID           — Phone Number ID from Meta dashboard
- *   META_WA_TEMPLATE_BOOKING   — Approved booking-confirmation template name
- *   META_WA_TEMPLATE_REMINDER  — Approved reminder template name
- *   META_WA_TEMPLATE_MISSED    — Approved missed-session template name
+ *   TWILIO_ACCOUNT_SID     — console.twilio.com → Account Info
+ *   TWILIO_AUTH_TOKEN      — console.twilio.com → Account Info
+ *   TWILIO_WHATSAPP_FROM   — Your Twilio WhatsApp sender, e.g.:
+ *                              Sandbox:  whatsapp:+14155238886
+ *                              Approved: whatsapp:+91XXXXXXXXXX
+ *
+ * Sandbox setup (testing without an approved number):
+ *   1. console.twilio.com → Messaging → Try it out → Send a WhatsApp message
+ *   2. Have each recipient send "join <sandbox-keyword>" to +14155238886
+ *   3. Set TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+ *
+ * Production setup (approved sender):
+ *   1. console.twilio.com → Messaging → Senders → WhatsApp Senders
+ *   2. Register your business number and complete Meta verification
+ *   3. Set TWILIO_WHATSAPP_FROM=whatsapp:+91XXXXXXXXXX
  */
 
+import twilio from "twilio";
 import { logger } from "@/lib/logger";
 
-// ─── Phone normalisation ───────────────────────────────────────────────────────
+// ─── Phone normalisation ──────────────────────────────────────────────────────
+// Twilio requires E.164 WITH the leading + (e.g. +919876543210)
 
 export function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
-  if (raw.startsWith("+")) return digits;
-  if (digits.length === 10 && /^[6-9]/.test(digits)) return `91${digits}`;
-  if (digits.length === 12 && digits.startsWith("91")) return digits;
-  return digits;
-}
 
-// ─── Meta error codes that mean "template problem — don't retry/throw" ────────
+  if (raw.startsWith("+")) return `+${digits}`;
 
-const TEMPLATE_ERROR_CODES = new Set([
-  130472, // Outside 24h customer service window — template required
-  132000, // Template not found or not approved yet
-  132001, // Template paused by Meta
-  132015, // Template rejected
-]);
-
-// ─── Internal fetch helper ────────────────────────────────────────────────────
-
-async function metaPost(phoneId: string, token: string, body: object): Promise<{
-  ok: boolean;
-  msgId?: string;
-  errorCode?: number;
-  errorMsg?: string;
-}> {
-  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = await res.json() as {
-    messages?: { id: string }[];
-    error?: { message: string; code: number; error_subcode?: number };
-  };
-
-  if (!res.ok || data.error) {
-    return {
-      ok: false,
-      errorCode: data.error?.code,
-      errorMsg:  data.error?.message ?? `HTTP ${res.status}`,
-    };
+  // 10-digit Indian mobile (starts with 6–9)
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    return `+91${digits}`;
   }
 
-  return { ok: true, msgId: data.messages?.[0]?.id };
+  // Already has 91 prefix: 12 digits starting with 91
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return `+${digits}`;
+  }
+
+  return `+${digits}`;
 }
 
-// ─── sendWhatsApp — free-form (24h window only) ───────────────────────────────
+// ─── Twilio client ────────────────────────────────────────────────────────────
 
-export async function sendWhatsApp(to: string, message: string): Promise<void> {
-  const phoneId = process.env.META_WA_PHONE_ID;
-  const token   = process.env.META_WA_TOKEN;
+function getClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken  = process.env.TWILIO_AUTH_TOKEN;
 
-  if (!phoneId || !token) {
+  if (!accountSid || !authToken) {
     throw new Error(
-      "[WhatsApp] META_WA_PHONE_ID or META_WA_TOKEN is not set. " +
-      "Get these from Meta Business Manager → WhatsApp → API Setup."
+      "[WhatsApp] TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN is not set. " +
+      "Get these from console.twilio.com → Account Info."
+    );
+  }
+
+  return twilio(accountSid, authToken);
+}
+
+// ─── sendWhatsApp — free-form message ────────────────────────────────────────
+
+/**
+ * Send a WhatsApp message via Twilio with automatic retry (3 attempts).
+ *
+ * @param to      Recipient phone — any reasonable Indian format
+ * @param message Plain-text message body
+ */
+export async function sendWhatsApp(to: string, message: string): Promise<void> {
+  const from = process.env.TWILIO_WHATSAPP_FROM;
+
+  if (!from) {
+    throw new Error(
+      "[WhatsApp] TWILIO_WHATSAPP_FROM is not set. " +
+      "Set it to your Twilio WhatsApp sender, e.g. whatsapp:+14155238886"
     );
   }
 
@@ -97,132 +85,117 @@ export async function sendWhatsApp(to: string, message: string): Promise<void> {
     return;
   }
 
-  const body = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: normalised,
-    type: "text",
-    text: { preview_url: false, body: message },
-  };
-
+  const client = getClient();
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const result = await metaPost(phoneId, token, body);
+      const msg = await client.messages.create({
+        from,
+        to:   `whatsapp:${normalised}`,
+        body: message,
+      });
 
-      if (!result.ok) {
-        if (result.errorCode === 130472) {
-          logger.warn("[WhatsApp] 130472 — outside 24h window, use template", { to: normalised });
-          return;
-        }
-        throw new Error(`Meta API error (${result.errorCode}): ${result.errorMsg}`);
-      }
-
-      logger.info("[WhatsApp] Sent", { to: normalised, msgId: result.msgId, attempt });
+      logger.info("[WhatsApp] Sent", { to: normalised, sid: msg.sid, attempt });
       return;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      logger.warn(`[WhatsApp] Attempt ${attempt}/3 failed`, { to: normalised, error: lastError.message });
-      if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
-    }
-  }
-
-  throw new Error(`[WhatsApp] All 3 attempts failed for ${normalised}. Last: ${lastError?.message}`);
-}
-
-// ─── sendWhatsAppTemplate — with template-rejection fallback ──────────────────
-
-/**
- * Send an approved Meta template message.
- *
- * Template errors (not found, paused, rejected, outside window) are logged
- * and swallowed — they do NOT throw. This keeps the notification workflow
- * moving even if one template has an issue.
- *
- * Network and 5xx errors ARE retried (3 attempts).
- *
- * @param to           Recipient phone
- * @param templateName Approved template name in Meta Business Manager
- * @param langCode     Template language code (default: "en")
- * @param components   Template variable components
- * @returns            true if sent, false if skipped due to template error
- */
-export async function sendWhatsAppTemplate(
-  to: string,
-  templateName: string,
-  langCode = "en",
-  components: object[] = []
-): Promise<boolean> {
-  const phoneId = process.env.META_WA_PHONE_ID;
-  const token   = process.env.META_WA_TOKEN;
-
-  if (!phoneId || !token) {
-    throw new Error("[WhatsApp] META_WA_PHONE_ID or META_WA_TOKEN is not set.");
-  }
-
-  const normalised = normalizePhone(to);
-  const body = {
-    messaging_product: "whatsapp",
-    to: normalised,
-    type: "template",
-    template: {
-      name: templateName,
-      language: { code: langCode },
-      components,
-    },
-  };
-
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const result = await metaPost(phoneId, token, body);
-
-      if (!result.ok) {
-        // Template-level errors: log and return false — do NOT re-throw
-        if (result.errorCode && TEMPLATE_ERROR_CODES.has(result.errorCode)) {
-          logger.warn("[WhatsApp Template] Template error — skipping, not retrying", {
-            to: normalised,
-            template: templateName,
-            errorCode: result.errorCode,
-            errorMsg: result.errorMsg,
-            hint:
-              result.errorCode === 132000
-                ? "Template not found or pending approval in Meta Business Manager"
-                : result.errorCode === 132001
-                ? "Template is paused — check Meta Business Manager"
-                : result.errorCode === 132015
-                ? "Template was rejected by Meta"
-                : "Outside 24h window — template send attempted correctly",
-          });
-          return false;
-        }
-
-        throw new Error(`Meta API error (${result.errorCode}): ${result.errorMsg}`);
-      }
-
-      logger.info("[WhatsApp Template] Sent", {
+      logger.warn(`[WhatsApp] Attempt ${attempt}/3 failed`, {
         to: normalised,
-        template: templateName,
-        msgId: result.msgId,
-        attempt,
-      });
-      return true;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      logger.warn(`[WhatsApp Template] Attempt ${attempt}/3 failed`, {
-        to: normalised,
-        template: templateName,
         error: lastError.message,
       });
       if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
     }
   }
 
-  // All retries exhausted — this is a network/infra error, re-throw
   throw new Error(
-    `[WhatsApp Template] All 3 attempts failed for ${normalised} (template: ${templateName}). ` +
+    `[WhatsApp] All 3 attempts failed for ${normalised}. Last: ${lastError?.message}`
+  );
+}
+
+// ─── sendWhatsAppTemplate — Twilio Content Template API ──────────────────────
+
+/**
+ * Send a pre-approved Twilio Content Template message.
+ *
+ * Use this for outbound-initiated notifications (booking confirmations,
+ * reminders) where the patient hasn't messaged you in the last 24 hours.
+ *
+ * Template errors (invalid SID, inactive template) are logged and swallowed —
+ * they do NOT throw, keeping the notification workflow moving.
+ * Network/auth errors ARE retried (3 attempts).
+ *
+ * @param to          Recipient phone
+ * @param contentSid  Twilio Content Template SID (e.g. HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
+ *                    From console.twilio.com → Content Template Builder
+ * @param variables   Template variable substitutions, e.g. { "1": "Anjali", "2": "10am" }
+ * @returns           true if sent, false if skipped due to template error
+ */
+export async function sendWhatsAppTemplate(
+  to: string,
+  contentSid: string,
+  variables: Record<string, string> = {}
+): Promise<boolean> {
+  const from = process.env.TWILIO_WHATSAPP_FROM;
+
+  if (!from) {
+    throw new Error("[WhatsApp] TWILIO_WHATSAPP_FROM is not set.");
+  }
+
+  const normalised = normalizePhone(to);
+  if (!normalised || normalised.length < 10) {
+    logger.warn("[WhatsApp] Skipping invalid phone", { raw: to });
+    return false;
+  }
+
+  const client = getClient();
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const msg = await client.messages.create({
+        from,
+        to:                    `whatsapp:${normalised}`,
+        contentSid,
+        contentVariables:      JSON.stringify(variables),
+      });
+
+      logger.info("[WhatsApp Template] Sent", {
+        to: normalised,
+        contentSid,
+        sid: msg.sid,
+        attempt,
+      });
+      return true;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+
+      const errMsg = lastError.message;
+
+      // Twilio error 63016 = content template not found / not approved
+      // Twilio error 63007 = WhatsApp sender not enabled for this channel
+      // These are not retryable — log and return false
+      if (/63016|63007|inactive|not found|not approved/i.test(errMsg)) {
+        logger.warn("[WhatsApp Template] Template error — skipping, not retrying", {
+          to: normalised,
+          contentSid,
+          error: errMsg,
+          hint: "Check console.twilio.com → Content Template Builder for approval status",
+        });
+        return false;
+      }
+
+      logger.warn(`[WhatsApp Template] Attempt ${attempt}/3 failed`, {
+        to: normalised,
+        contentSid,
+        error: errMsg,
+      });
+      if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
+    }
+  }
+
+  throw new Error(
+    `[WhatsApp Template] All 3 attempts failed for ${normalised} (sid: ${contentSid}). ` +
     `Last: ${lastError?.message}`
   );
 }

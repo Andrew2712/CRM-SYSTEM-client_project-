@@ -28,7 +28,20 @@ type Patient = {
   _count: { appointments: number };
 };
 
-const BLANK_PATIENT = {
+// FIX: age typed as string | number so the input (string) and the coerced
+// payload (number | undefined) both satisfy the type without casting.
+type PatientForm = {
+  name: string;
+  phone: string;
+  email: string;
+  age: string | number;
+  gender: string;
+  address: string;
+  purposeOfVisit: string;
+  medicalConditions: string;
+};
+
+const BLANK_PATIENT: PatientForm = {
   name: "", phone: "", email: "", age: "",
   gender: "", address: "", purposeOfVisit: "", medicalConditions: "",
 };
@@ -232,7 +245,7 @@ export default function PatientsPage() {
   const [exporting,      setExporting]       = useState(false);
   const [exportDone,     setExportDone]      = useState(false);
   const [showPatientForm, setShowPatientForm] = useState(false);
-  const [patientForm,     setPatientForm]     = useState(BLANK_PATIENT);
+  const [patientForm,     setPatientForm]     = useState<PatientForm>(BLANK_PATIENT);
   const [savingPatient,   setSavingPatient]   = useState(false);
   const [patientSuccess,  setPatientSuccess]  = useState("");
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
@@ -296,7 +309,22 @@ export default function PatientsPage() {
     setSavingPatient(true);
     setPatientSuccess("");
     try {
-      const res = await fetch("/api/patients", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(patientForm) });
+      // FIX 1: Coerce age from string → number before sending.
+      // HTML inputs always yield strings; Zod's z.number() rejects them → "Invalid input".
+      // FIX 2: Strip spaces/hyphens from phone so "+91 98765 43210" passes the
+      // /^\+?[0-9]{10,15}$/ regex in CreatePatientSchema.
+      const payload = {
+        ...patientForm,
+        phone: patientForm.phone.replace(/[\s\-]/g, ""),
+        age: patientForm.age !== "" ? Number(patientForm.age) : undefined,
+      };
+
+      const res = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
       const data = await res.json();
       if (res.ok) {
         setPatientSuccess(`Patient registered! ID: ${data.patientCode}`);
@@ -431,13 +459,13 @@ export default function PatientsPage() {
                 <input required value={patientForm.name} onChange={e => setPatientForm({...patientForm, name: e.target.value})} placeholder="e.g. Rahul Sharma" className={inputCls}/>
               </Field>
               <Field label="Phone number" required>
-                <input required value={patientForm.phone} onChange={e => setPatientForm({...patientForm, phone: e.target.value})} placeholder="+91 98765 43210" className={inputCls}/>
+                <input required value={patientForm.phone} onChange={e => setPatientForm({...patientForm, phone: e.target.value})} placeholder="+919876543210" className={inputCls}/>
               </Field>
               <Field label="Email">
                 <input type="email" value={patientForm.email} onChange={e => setPatientForm({...patientForm, email: e.target.value})} placeholder="email@example.com" className={inputCls}/>
               </Field>
               <Field label="Age" required>
-                <input required type="number" value={patientForm.age} onChange={e => setPatientForm({...patientForm, age: e.target.value})} placeholder="e.g. 35" className={inputCls}/>
+                <input required type="number" min={0} max={150} value={patientForm.age} onChange={e => setPatientForm({...patientForm, age: e.target.value})} placeholder="e.g. 35" className={inputCls}/>
               </Field>
               <Field label="Gender" required>
                 <select required value={patientForm.gender} onChange={e => setPatientForm({...patientForm, gender: e.target.value})} className={inputCls}>

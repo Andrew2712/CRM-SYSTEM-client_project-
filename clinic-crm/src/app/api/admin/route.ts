@@ -1,33 +1,28 @@
 /**
  * src/app/api/admin/route.ts
  * GET /api/admin — main dashboard stats
- *
- * FIX: Added role check after session check.
- * Previously: any logged-in user (DOCTOR, RECEPTIONIST, PATIENT) could call
- * this endpoint and read all patient counts, all appointments, full patient
- * list, and weekly stats. Only ADMIN and RECEPTIONIST should have access.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimitAdmin, rateLimitResponse } from "@/lib/rateLimit";
 
 const ALLOWED_ROLES = ["ADMIN", "RECEPTIONIST"];
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const rl = await rateLimitAdmin(req);
+  if (!rl.success) return rateLimitResponse(rl);
+
   const session = await getServerSession(authOptions);
 
-  // ── Auth check ────────────────────────────────────────────────────────────
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // ── Role check (FIX) ──────────────────────────────────────────────────────
-  // Previously missing — any authenticated user could read full admin data.
   if (!ALLOWED_ROLES.includes(session.user.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  // ── Data queries (unchanged) ──────────────────────────────────────────────
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -72,7 +67,6 @@ export async function GET() {
     }),
   ]);
 
-  // Weekly counts Mon–Sun
   const weekCounts = await Promise.all(
     Array.from({ length: 7 }, (_, i) => {
       const d = new Date(weekStart);
