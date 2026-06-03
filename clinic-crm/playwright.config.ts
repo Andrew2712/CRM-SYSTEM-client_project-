@@ -1,7 +1,16 @@
 import { defineConfig, devices } from "@playwright/test";
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.test" });
+
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+
+const BROWSER_ARGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+];
+
 export default defineConfig({
   testDir: "./__tests__/e2e",
   timeout: 30_000,
@@ -14,12 +23,15 @@ export default defineConfig({
     screenshot: "only-on-failure",
     actionTimeout: 10_000,
     navigationTimeout: 15_000,
+    launchOptions: {
+      args: BROWSER_ARGS,
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "npm run dev",
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    timeout: 120_000,
   },
 });

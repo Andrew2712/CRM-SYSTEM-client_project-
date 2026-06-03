@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect } from "@jest/globals";
+import { z } from "zod";
 
 // ─── Helpers & in-memory mocks ────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ const mockPatients: Record<string, {
 const mockUsers: Record<string, {
   id: string; email: string; role: string; passwordHash: string; isActive: boolean;
 }> = {};
+
 
 const mockAppointments: Array<{
   id: string; doctorId: string; patientId: string;
@@ -108,8 +110,6 @@ describe("RBAC — appointment filter scoping", () => {
 // ─── 3. Password validation ───────────────────────────────────────────────────
 
 describe("Password strength — SignupSchema", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { z } = require("zod");
 
   const SignupSchema = z.object({
     name: z.string().min(2).max(100).trim(),

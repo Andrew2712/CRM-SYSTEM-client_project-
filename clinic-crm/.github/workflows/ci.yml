@@ -1,0 +1,179 @@
+# .github/workflows/ci.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# CI pipeline — runs on every push and pull request.
+#
+# Jobs:
+#   1. lint     — ESLint check
+#   2. test     — Jest integration tests with coverage thresholds
+#   3. e2e      — Playwright browser tests (runs against a real dev server)
+#
+# The "e2e" job only runs when E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD
+# repository secrets are set. If they are absent the job is skipped cleanly
+# rather than failing — so CI still passes on forks or branches where those
+# secrets are unavailable.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DATABASE_URL                — test / CI database connection string
+#   NEXTAUTH_SECRET             — any random 32-char string for CI
+#   RESEND_API_KEY              — can be "re_test_..." (Resend test key)
+#   EMAIL_FROM                  — e.g. noreply@yourdomain.com
+#   META_WA_TOKEN               — Meta Cloud API token
+#   META_WA_PHONE_ID            — Meta phone number ID
+#   CRON_SECRET                 — any random string
+#   UPSTASH_REDIS_REST_URL      — Upstash Redis REST URL
+#   UPSTASH_REDIS_REST_TOKEN    — Upstash Redis REST token
+#   E2E_ADMIN_EMAIL             — (optional) admin login for Playwright
+#   E2E_ADMIN_PASSWORD          — (optional) admin password for Playwright
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ── 1. Lint ────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: clinic-crm/package-lock.json
+
+      - name: Install dependencies
+        working-directory: clinic-crm
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: clinic-crm
+        run: npm run lint
+
+  # ── 2. Jest unit + integration tests ──────────────────────────────────────
+  test:
+    name: Tests (Jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+
+    defaults:
+      run:
+        working-directory: clinic-crm
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL:               ${{ secrets.DATABASE_URL }}
+      NEXTAUTH_SECRET:            ${{ secrets.NEXTAUTH_SECRET }}
+      NEXTAUTH_URL:               http://localhost:3000
+      RESEND_API_KEY:             ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM:                 ${{ secrets.EMAIL_FROM }}
+      META_WA_TOKEN:              ${{ secrets.META_WA_TOKEN }}
+      META_WA_PHONE_ID:           ${{ secrets.META_WA_PHONE_ID }}
+      CRON_SECRET:                ${{ secrets.CRON_SECRET }}
+      UPSTASH_REDIS_REST_URL:     ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN:   ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: clinic-crm/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run tests with coverage
+        run: npm run test:ci
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest-coverage
+          path: clinic-crm/coverage/
+          retention-days: 14
+
+  # ── 3. Playwright E2E tests ────────────────────────────────────────────────
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+
+    # Skip gracefully when E2E secrets are not configured
+    if: |
+      secrets.E2E_ADMIN_EMAIL != '' &&
+      secrets.E2E_ADMIN_PASSWORD != ''
+
+    defaults:
+      run:
+        working-directory: clinic-crm
+
+    env:
+      NODE_ENV: test
+      PLAYWRIGHT_BASE_URL:        http://localhost:3000
+      E2E_ADMIN_EMAIL:            ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD:         ${{ secrets.E2E_ADMIN_PASSWORD }}
+      DATABASE_URL:               ${{ secrets.DATABASE_URL }}
+      NEXTAUTH_SECRET:            ${{ secrets.NEXTAUTH_SECRET }}
+      NEXTAUTH_URL:               http://localhost:3000
+      RESEND_API_KEY:             ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM:                 ${{ secrets.EMAIL_FROM }}
+      META_WA_TOKEN:              ${{ secrets.META_WA_TOKEN }}
+      META_WA_PHONE_ID:           ${{ secrets.META_WA_PHONE_ID }}
+      CRON_SECRET:                ${{ secrets.CRON_SECRET }}
+      UPSTASH_REDIS_REST_URL:     ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN:   ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: clinic-crm/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run Playwright tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: clinic-crm/playwright-report/
+          retention-days: 14
