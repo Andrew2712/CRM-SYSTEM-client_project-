@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { PatientStatus } from "@prisma/client";
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export const SignupSchema = z.object({
@@ -64,7 +65,6 @@ export const CreatePatientSchema = z.object({
   purposeOfVisit: z.string().max(500).optional(),
   totalSessionsPlanned: z.number().int().min(0).default(0),
   status: z.nativeEnum(PatientStatus).optional(),
-  
 });
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
@@ -83,14 +83,20 @@ export const CreateExpenseSchema = z.object({
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
+// The two branches use `data: T` vs `data: undefined` (not `data?: never`).
+// This gives TypeScript a true discriminated union it can narrow via
+// `if (!result.data)` — after that guard, `result.data` is always T.
+type ValidateSuccess<T> = { data: T;         error: undefined; status?: never  };
+type ValidateFailure    = { data: undefined; error: string;   status: 400     };
+
 export function validate<T>(
   schema: z.ZodType<T>,
   body: unknown
-): { data: T; error?: never } | { data?: never; error: string; status: 400 } {
+): ValidateSuccess<T> | ValidateFailure {
   const result = schema.safeParse(body);
   if (!result.success) {
     const messages = result.error.issues.map((e) => e.message).join("; ");
-    return { error: messages, status: 400 };
+    return { data: undefined, error: messages, status: 400 };
   }
-  return { data: result.data };
+  return { data: result.data, error: undefined };
 }

@@ -22,12 +22,13 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Gender, Phase, PatientStatus } from "@prisma/client";
+import { PatientStatus } from "@prisma/client";
 import { requireAuth, getPatientFilter } from "@/lib/rbac";
 import { activityInclude, enrichWithActivity } from "@/lib/patientActivity";
 import bcrypt from "bcryptjs";
 import { rateLimitRead, rateLimitWrite, rateLimitResponse } from "@/lib/rateLimit";
 import { auditPatient } from "@/lib/audit";
+import { CreatePatientSchema, validate } from "@/lib/validation";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -61,10 +62,6 @@ export async function GET(req: NextRequest) {
 
     const rbacScope = getPatientFilter(session);
 
-    // Inline the query so we control orderBy / take / cursor directly.
-    // orderBy includes `id` as a tiebreaker — createdAt is non-unique so
-    // without it Prisma cannot reliably locate the cursor row, causing skipped
-    // or duplicated records across pages.
     const rows = await prisma.patient.findMany({
       where: {
         isActive: true,
@@ -80,7 +77,7 @@ export async function GET(req: NextRequest) {
       },
       orderBy: [
         { createdAt: "desc" },
-        { id: "desc" },           // tiebreaker — makes cursor position unique
+        { id: "desc" },
       ],
       take: limit + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
@@ -112,47 +109,50 @@ export async function POST(req: NextRequest) {
   if (session.user.role === "DOCTOR")
     return NextResponse.json({ error: "Doctors are not permitted to create patient records" }, { status: 403 });
 
-  let body: Record<string, unknown>;
-  try { body = await req.json(); }
+  let rawBody: unknown;
+  try { rawBody = await req.json(); }
   catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
 
-  if (!body.name || typeof body.name !== "string")
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
-  if (!body.phone || typeof body.phone !== "string")
-    return NextResponse.json({ error: "phone is required" }, { status: 400 });
+  // ── Zod validation ────────────────────────────────────────────────────────
+  // Guard on !validated.data instead of validated.error so TypeScript
+  // can narrow `body` to the non-undefined type in the happy path.
+  const validated = validate(CreatePatientSchema, rawBody);
+  if (!validated.data) {
+    return NextResponse.json({ error: validated.error }, { status: 400 });
+  }
+  const body = validated.data; // ← fully typed, never undefined from here on
 
   try {
-    const existing = await prisma.patient.findUnique({ where: { phone: body.phone as string } });
+    const existing = await prisma.patient.findUnique({ where: { phone: body.phone } });
     if (existing)
       return NextResponse.json({ error: "Patient with this phone already exists", existing }, { status: 409 });
 
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        const patientCode       = await generatePatientCode();
-        const registrationDate  = new Date().toISOString().slice(0, 10);
-        const firstName         = (body.name as string).trim().split(/\s+/)[0];
-        const rawPassword       = `${firstName}_${registrationDate}`;
-        const passwordHash      = await bcrypt.hash(rawPassword, 10);
+        const patientCode      = await generatePatientCode();
+        const registrationDate = new Date().toISOString().slice(0, 10);
+        const firstName        = body.name.trim().split(/\s+/)[0];
+        const rawPassword      = `${firstName}_${registrationDate}`;
+        const passwordHash     = await bcrypt.hash(rawPassword, 10);
 
         const patient = await prisma.patient.create({
           data: {
             patientCode,
-            name:                 body.name as string,
-            phone:                body.phone as string,
-            email:                (body.email as string) || null,
-            age:                  body.age ? parseInt(body.age as string, 10) : null,
-            gender:               (body.gender as Gender) || null,
-            address:              (body.address as string) || null,
-            purposeOfVisit:       (body.purposeOfVisit as string) || null,
-            medicalConditions:    (body.medicalConditions as string) || null,
-            status:               (body.status as PatientStatus) || PatientStatus.NEW,
-            phase:                (body.phase as Phase) || null,
-            totalSessionsPlanned: body.totalSessionsPlanned ? parseInt(body.totalSessionsPlanned as string, 10) : 0,
+            name:                 body.name,
+            phone:                body.phone,
+            email:                body.email || null,
+            age:                  body.age ?? null,
+            gender:               body.gender ?? null,
+            address:              body.address ?? null,
+            purposeOfVisit:       body.purposeOfVisit ?? null,
+            medicalConditions:    body.medicalConditions ?? null,
+            status:               body.status ?? PatientStatus.NEW,
+            phase:                body.phase ?? null,
+            totalSessionsPlanned: body.totalSessionsPlanned ?? 0,
             passwordHash:         body.email ? passwordHash : null,
           },
         });
 
-        // ── Audit ──
         await auditPatient(session, req, "CREATE", patient.id, {
           name: patient.name,
           new:  { patientCode, name: patient.name, phone: patient.phone, email: patient.email },
