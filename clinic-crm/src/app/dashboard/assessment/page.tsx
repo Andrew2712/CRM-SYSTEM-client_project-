@@ -358,6 +358,32 @@ export default function AssessmentPage() {
     return ()=>document.removeEventListener("mousedown",h);
   },[]);
 
+  // Pre-fetch patient details when ?patientId= comes from the URL
+  useEffect(()=>{
+    const prefilledId = searchParams.get("patientId");
+    if(!prefilledId||patientSearch) return;
+    (async()=>{
+      setSearchLoading(true);
+      try{
+        const res = await fetch(`/api/patients/${prefilledId}`);
+        if(!res.ok) return;
+        const json = await res.json();
+        const pt: CRMPatient|undefined = json.id ? json : json.patient;
+        if(pt?.name){
+          setPatientSearch(pt.name);
+          setP(prev=>({
+            ...prev,
+            name:  pt.name,
+            phone: pt.phone ?? prev.phone,
+            age:   pt.age != null ? String(pt.age) : prev.age,
+          }));
+        }
+      }catch{/* silently ignore */}
+      finally{setSearchLoading(false);}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   // Debounced patient search
   useEffect(()=>{
     if(patientSearch.length<2){setPatientResults([]);return;}
@@ -366,7 +392,7 @@ export default function AssessmentPage() {
       try{
         const res=await fetch(`/api/patients?search=${encodeURIComponent(patientSearch)}&limit=8`);
         const data=await res.json();
-        setPatientResults(data.patients??[]);
+        setPatientResults(data.data??data.patients??[]);
       }catch{setPatientResults([]);}
       finally{setSearchLoading(false);}
     },300);
@@ -745,7 +771,19 @@ export default function AssessmentPage() {
               {saveStatus==="saving"?"Saving…":"💾 Save Draft"}
             </button>
           )}
-          <button className="vbp" style={{background:"var(--vnc)"}} onClick={()=>saveAssessment("PUBLISHED")} disabled={saveStatus==="saving"}>🚀 Publish to Patient</button>
+          <button
+            className="vbp"
+            style={{background:linkedPatientId?"var(--vnc)":"var(--vmu)",position:"relative"}}
+            onClick={()=>{
+              if(!linkedPatientId){
+                setErr("⚠ No patient linked — link a CRM patient first so the report can be published to their portal.");
+                return;
+              }
+              saveAssessment("PUBLISHED");
+            }}
+            disabled={saveStatus==="saving"}
+            title={linkedPatientId?"Publish to patient portal":"Link a patient first"}
+          >🚀 Publish to Patient{!linkedPatientId&&<span style={{fontSize:9,marginLeft:4,opacity:.8}}>(link required)</span>}</button>
           <button className="vbp" onClick={resetAll}>↺ New</button>
         </div>
         {err&&<div className="verr">{err}</div>}
