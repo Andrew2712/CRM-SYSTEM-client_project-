@@ -10,10 +10,10 @@ import { logger } from "@/lib/logger";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }   // ← Promise<{...}>
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;                      // ← await params
+    const { id } = await params;
     const session = await requireAuth();
     requireRole(session, ["DOCTOR", "ADMIN", "RECEPTIONIST"]);
 
@@ -45,10 +45,10 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }   // ← Promise<{...}>
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;                      // ← await params
+    const { id } = await params;
     const session = await requireAuth();
     requireRole(session, ["DOCTOR", "ADMIN"]);
 
@@ -80,7 +80,8 @@ export async function PATCH(
       },
     });
 
-    if (status === "PUBLISHED" && existing.status !== "PUBLISHED") {
+    // FIX: patientId is now nullable — only attempt notification if it exists
+    if (status === "PUBLISHED" && existing.status !== "PUBLISHED" && existing.patientId) {
       const patient = await prisma.patient.findUnique({
         where: { id: existing.patientId },
         select: { passwordHash: true },
@@ -121,10 +122,10 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }   // ← Promise<{...}>
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;                      // ← await params
+    const { id } = await params;
     const session = await requireAuth();
     requireRole(session, ["DOCTOR", "ADMIN"]);
 
