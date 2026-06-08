@@ -3,6 +3,11 @@
  *
  * POST /api/assessments  — Doctor creates/saves an assessment (DRAFT or PUBLISHED)
  * GET  /api/assessments  — List assessments (doctor sees own; admin/receptionist sees all)
+ *
+ * FIX: patientId is now OPTIONAL. Assessments can be saved without linking to
+ * a CRM patient (e.g. when opened directly from /dashboard/assessment without
+ * a ?patientId= param). The 400 "patientId and assessmentData are required"
+ * error is resolved by only validating assessmentData as required.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -28,26 +33,30 @@ export async function POST(req: NextRequest) {
       status = "DRAFT",
     } = body;
 
-    if (!patientId || !assessmentData) {
+    // assessmentData is the only hard requirement
+    if (!assessmentData) {
       return NextResponse.json(
-        { error: "patientId and assessmentData are required" },
+        { error: "assessmentData is required" },
         { status: 400 }
       );
     }
 
-    // Verify patient exists and is active
-    const patient = await prisma.patient.findUnique({
-      where: { id: patientId, isActive: true },
-      select: { id: true, name: true, passwordHash: true },
-    });
-    if (!patient) {
-      return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+    // patientId is optional — verify only if provided
+    let patient: { id: string; name: string; passwordHash: string | null } | null = null;
+    if (patientId) {
+      patient = await prisma.patient.findUnique({
+        where: { id: patientId, isActive: true },
+        select: { id: true, name: true, passwordHash: true },
+      });
+      if (!patient) {
+        return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+      }
     }
 
     // ── Extract queryable metadata from AI output ────────────────────────────
-    const dx   = aiDiagnosis?.dx?.[0];
-    const prog = aiDiagnosis?.prog;
-    const inv  = aiDiagnosis?.inv;
+    const dx    = aiDiagnosis?.dx?.[0];
+    const prog  = aiDiagnosis?.prog;
+    const inv   = aiDiagnosis?.inv;
     const flags: string[] = aiDiagnosis?.flags ?? [];
 
     // NDI score
@@ -87,19 +96,20 @@ export async function POST(req: NextRequest) {
       ? `Phase ${inv.ph} — ${inv.nm} · ${inv.sess} sessions · ${inv.pr}`
       : null;
 
-    const publishedAt =
-      status === "PUBLISHED" ? new Date() : undefined;
+    const publishedAt = status === "PUBLISHED" ? new Date() : undefined;
 
     // ── Create the assessment row ─────────────────────────────────────────────
+    // Use unchecked create (raw scalar IDs) so patientId can be null without
+    // Prisma demanding a required relation connect object.
     const assessment = await prisma.patientAssessment.create({
       data: {
-        patientId,
+        patientId:     patientId    ?? null,
         doctorId:      session.user.id,
         appointmentId: appointmentId ?? null,
 
         // Metadata
-        primaryComplaint:    assessmentData.C?.primary    ?? null,
-        nrsScore:            assessmentData.C?.nrs        ?? null,
+        primaryComplaint:    assessmentData.C?.primary ?? null,
+        nrsScore:            assessmentData.C?.nrs     ?? null,
         ndiScore,
         mobilityScore,
         mobilityGrade,
@@ -112,7 +122,7 @@ export async function POST(req: NextRequest) {
         totalSessions:       prog?.sess ?? null,
         timelineWeeks:       prog?.wks  ?? null,
         investmentPlan,
-        hasRedFlags: flags.filter((f) => f && f !== "...").length > 0,
+        hasRedFlags: flags.filter((f: string) => f && f !== "...").length > 0,
 
         // Blobs
         assessmentData,
@@ -121,21 +131,22 @@ export async function POST(req: NextRequest) {
 
         status:      status as "DRAFT" | "PUBLISHED" | "ARCHIVED",
         publishedAt,
-      },
+      } as any, // cast to any to use unchecked input — patientId is nullable in DB
     });
 
     // ── Audit log ─────────────────────────────────────────────────────────────
+    const patientName = patient?.name ?? assessmentData?.P?.name ?? "unknown";
     await auditLog({
       session,
       req,
       action:      "CREATE",
       entity:      "PatientAssessment",
       entityId:    assessment.id,
-      description: `Assessment ${status === "PUBLISHED" ? "published" : "saved as draft"} for patient ${patient.name}`,
+      description: `Assessment ${status === "PUBLISHED" ? "published" : "saved as draft"} for ${patientName}${patientId ? "" : " (not linked to CRM patient)"}`,
     });
 
     // ── Notify patient if publishing and they have a portal account ───────────
-    if (status === "PUBLISHED" && patient.passwordHash) {
+    if (status === "PUBLISHED" && patient?.passwordHash && patientId) {
       await prisma.inAppNotification.create({
         data: {
           userId:   patientId,
@@ -144,12 +155,12 @@ export async function POST(req: NextRequest) {
           body:     `Your physiotherapy assessment report from ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })} has been published. You can now view and download it.`,
           entityId: assessment.id,
         },
-      }).catch(() => {}); // non-fatal
+      }).catch(() => {});
     }
 
     logger.info("Assessment saved", {
       assessmentId: assessment.id,
-      patientId,
+      patientId:    patientId ?? "unlinked",
       status,
     });
 

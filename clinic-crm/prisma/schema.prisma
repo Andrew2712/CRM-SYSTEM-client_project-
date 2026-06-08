@@ -131,7 +131,7 @@ model PatientVisit {
 
 model PatientAssessment {
   id            String  @id @default(cuid())
-  patientId     String
+  patientId     String? // optional — assessment can be saved without a CRM patient link
   doctorId      String
   appointmentId String? @unique // optional link to a specific appointment
 
@@ -176,7 +176,7 @@ model PatientAssessment {
   updatedAt   DateTime         @updatedAt
   // ─────────────────────────────────────────────────────────────────────────
 
-  patient     Patient      @relation(fields: [patientId], references: [id])
+  patient     Patient?     @relation(fields: [patientId], references: [id])
   doctor      User         @relation("DoctorAssessments", fields: [doctorId], references: [id])
   appointment Appointment? @relation(fields: [appointmentId], references: [id])
 
