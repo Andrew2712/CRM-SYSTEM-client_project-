@@ -9,7 +9,7 @@ import { rateLimitRead, rateLimitWrite, rateLimitResponse } from "@/lib/rateLimi
 import { auditLog } from "@/lib/audit";
 import { requireAuth, requireRole } from "@/lib/rbac";
 import type { AuthSession } from "@/lib/rbac";
-import { validate, CreatePatientSchema } from "@/lib/validation";
+import { CreatePatientSchema } from "@/lib/validation";
 
 // ── Helper: enforce access to a specific patient ──────────────────────────────
 async function assertCanAccessPatient(
@@ -114,8 +114,38 @@ export async function PATCH(
 
   const body = await req.json();
 
+  // ── Sanitise the raw body before handing it to Zod ──────────────────────────
+  // 1. HTML number inputs always send strings → coerce age to a number.
+  //    If the field is absent or an empty string, leave it as undefined so
+  //    the partial schema simply ignores it.
+  // 2. Enum fields (phase, gender, status) sent as "" (empty string) are not
+  //    valid enum values in Zod.  Map "" → undefined so the field is treated
+  //    as "not provided" rather than "invalid value".
+  // 3. Strip spaces/hyphens from phone to satisfy the phone regex.
+  const sanitised: Record<string, unknown> = { ...body };
+
+  if (sanitised.age !== undefined) {
+    if (sanitised.age === "" || sanitised.age === null) {
+      delete sanitised.age;
+    } else {
+      const n = Number(sanitised.age);
+      if (!Number.isNaN(n)) sanitised.age = n;
+    }
+  }
+
+  if (typeof sanitised.phone === "string") {
+    sanitised.phone = sanitised.phone.replace(/[\s\-]/g, "");
+  }
+
+  for (const field of ["phase", "gender", "status"] as const) {
+    if (sanitised[field] === "" || sanitised[field] === null) {
+      delete sanitised[field];
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   const partial = CreatePatientSchema.partial();
-  const result = partial.safeParse(body);
+  const result = partial.safeParse(sanitised);
   if (!result.success) {
     const messages = result.error.issues.map((e) => e.message).join("; ");
     return NextResponse.json({ error: messages }, { status: 400 });
